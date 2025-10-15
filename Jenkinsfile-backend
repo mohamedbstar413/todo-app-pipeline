@@ -1,0 +1,17 @@
+pipeline{
+    agent any
+    tools{
+        
+    }
+    stages{
+        stage('pull code'){
+
+        }
+        stage('build image'){
+
+        }
+        stage('push to the docker hub'){
+            
+        }
+    }
+}
