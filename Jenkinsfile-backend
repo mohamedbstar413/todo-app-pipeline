@@ -1,17 +1,28 @@
-pipeline{
+pipeline {
     agent any
-    tools{
-        
+    tools {
+        nodejs 'node-js'
     }
-    stages{
-        stage('pull code'){
-
+    environment{
+        DOCKER_REPO="bstar999"
+    }
+    stages {
+        stage('pull code') {
+            steps {
+                git branch: 'main', url: 'https://github.com/mohamedbstar413/todo-app-pipeline.git'
+            }
         }
-        stage('build image'){
-
-        }
-        stage('push to the docker hub'){
-            
+        stage('build image and push to the docker hub') {
+            steps {
+                dir('app-code/backend') {
+                    withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+                        sh 'docker login -u $USER -p $PASS'
+                        sh 'docker build -t back-image-mini .'
+                        sh "docker tag back-image-mini ${DOCKER_REPO}/back-image-mini"
+                        sh "docker push ${DOCKER_REPO}/back-image-mini"
+                    }
+                }
+            }
         }
     }
 }
