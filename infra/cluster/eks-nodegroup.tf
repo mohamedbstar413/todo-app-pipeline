@@ -1,11 +1,11 @@
 resource "aws_eks_node_group" "todo_app_node_group" {
-  node_group_name =             "todo_app_node_group"
+  node_group_name =             "todo-app-node-group"
   cluster_name =                aws_eks_cluster.todo_cluster.name
   node_role_arn =               aws_iam_role.todo_iam_role.arn
   subnet_ids =                  [var.subnet_1_id, var.subnet_2_id]
    scaling_config {
-    desired_size = 1
-    max_size     = 2
+    desired_size = 2
+    max_size     = 3
     min_size     = 1
   }
   update_config {
@@ -15,8 +15,7 @@ resource "aws_eks_node_group" "todo_app_node_group" {
   remote_access {
     ec2_ssh_key =                "new-key" #to allow ssh into nodes
   }
-
-  instance_types =              [ "t3.micro" ]
+  instance_types = [ "c7i-flex.large" ]
 }
 
 resource "aws_iam_role" "todo_iam_role" {

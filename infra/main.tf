@@ -16,4 +16,6 @@ module "cluster" {
   source = "./cluster"
   subnet_1_id = module.network.subnet_1_id
   subnet_2_id = module.network.subnet_2_id
+  cluster_name = "todo-app-cluster"
+  vpc_id = module.network.vpc_id
 }

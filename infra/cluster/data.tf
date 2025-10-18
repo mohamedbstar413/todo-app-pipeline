@@ -28,3 +28,17 @@ data "aws_ami" "ubuntu" {
 
   owners = ["099720109477"] # Canonical’s official AWS account ID
 }
+
+data "aws_caller_identity" "current" {}
+
+# Data source to get the EKS cluster OIDC issuer URL
+data "aws_eks_cluster" "cluster" {
+  name = var.cluster_name
+  depends_on = [ aws_eks_cluster.todo_cluster ]
+}
+
+# Data source to get the OIDC provider ARN
+data "aws_iam_openid_connect_provider" "oidc_provider" {
+  url = data.aws_eks_cluster.cluster.identity[0].oidc[0].issuer
+  depends_on = [ aws_eks_cluster.todo_cluster , aws_iam_openid_connect_provider.oidc_provider]
+}
