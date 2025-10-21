@@ -7,6 +7,10 @@ resource "aws_eks_cluster" "todo_cluster" {
         var.subnet_2_id
      ]
   }
+  timeouts {
+    create = "60m"  
+    delete = "40m" 
+  }
 }
 
 resource "aws_iam_openid_connect_provider" "oidc_provider" {

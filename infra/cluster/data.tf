@@ -36,6 +36,10 @@ data "aws_eks_cluster" "cluster" {
   name = var.cluster_name
   depends_on = [ aws_eks_cluster.todo_cluster ]
 }
+# Data source to fetch the EKS cluster authentication token
+data "aws_eks_cluster_auth" "todo_cluster" {
+  name = aws_eks_cluster.todo_cluster.name
+}
 
 # Data source to get the OIDC provider ARN
 data "aws_iam_openid_connect_provider" "oidc_provider" {

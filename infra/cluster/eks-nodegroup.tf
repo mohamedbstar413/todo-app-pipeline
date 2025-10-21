@@ -15,6 +15,10 @@ resource "aws_eks_node_group" "todo_app_node_group" {
   remote_access {
     ec2_ssh_key =                "new-key" #to allow ssh into nodes
   }
+  timeouts {
+    create = "60m"
+    delete = "40m"
+  }
   instance_types = [ "c7i-flex.large" ]
 }
 
