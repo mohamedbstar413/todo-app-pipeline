@@ -12,12 +12,16 @@ resource "aws_eks_node_group" "todo_app_node_group" {
     max_unavailable = 1
   }
 
-  remote_access {
+  /*remote_access {
     ec2_ssh_key =                "new-key" #to allow ssh into nodes
-  }
+  }*/
   timeouts {
     create = "60m"
     delete = "40m"
+  }
+  launch_template {
+    version = "$Latest"
+    id = aws_launch_template.todo_app_node_launch_template.id
   }
   instance_types = [ "c7i-flex.large" ]
 }
@@ -50,4 +54,8 @@ resource "aws_iam_role_policy_attachment" "todo_role_eks_cni_policy_attach" {
 resource "aws_iam_role_policy_attachment" "todo_role_eks_worker_node_policy_attach" {
   policy_arn = data.aws_iam_policy.eks_worker_node_policy.arn
   role       = aws_iam_role.todo_iam_role.name
+}
+resource "aws_iam_role_policy_attachment" "todo_role_s3_policy_attach" {
+  policy_arn = data.aws_iam_policy.eks_node_s3_policy.arn
+  role = aws_iam_role.s3_role.name
 }

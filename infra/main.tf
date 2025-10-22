@@ -30,4 +30,6 @@ module "kubernetes_resources" {
   cluster_name          = "todo-app-cluster"
   aws_region            = "us-east-1"
   grafana_admin_password = "admin123"
+  todo_cluster = module.cluster.todo_cluster
+  todo_front_nginx_config_s3  = module.cluster.todo_front_nginx_config_s3
 }

@@ -13,6 +13,9 @@ data "aws_iam_policy" "eks_cni_policy" {
 data "aws_iam_policy" "eks_worker_node_policy" {
   name = "AmazonEKSWorkerNodePolicy"
 }
+data "aws_iam_policy" "eks_node_s3_policy" {
+  name = "AmazonS3FullAccess"
+}
 data "aws_ami" "ubuntu" {
   most_recent = true
 

@@ -27,3 +27,10 @@ output "ebs_csi_role_arn" {
 output "autoscaler_role_arn" {
   value = aws_iam_role.auto_scaler_role.arn
 }
+
+output "todo_cluster" {
+  value = aws_eks_cluster.todo_cluster
+}
+output "todo_front_nginx_config_s3" {
+  value = aws_s3_bucket.todo_front_nginx_config_s3
+}

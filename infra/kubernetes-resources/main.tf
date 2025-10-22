@@ -43,6 +43,11 @@ resource "helm_release" "nginx_ingress" {
     name  = "controller.serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
     value = var.lb_role_arn
   }
+  depends_on = [
+    var.todo_cluster,           # Ensure cluster is active
+    
+    var.todo_front_nginx_config_s3             # Ensure S3 bucket exists for user_data
+  ]
 }
 
 resource "helm_release" "aws_ebs_csi_driver" {
@@ -67,9 +72,13 @@ resource "helm_release" "aws_ebs_csi_driver" {
     name  = "controller.serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
     value = var.ebs_driver_role.arn
   }
+  depends_on = [
+    var.todo_cluster,           # Ensure cluster is active
+    var.todo_front_nginx_config_s3             # Ensure S3 bucket exists for user_data
+  ]
 
 }
-/*
+
 #Metrics Server
 resource "helm_release" "metrics_server" {
   name       = "metrics-server"
@@ -82,6 +91,10 @@ resource "helm_release" "metrics_server" {
     name  = "args[0]"
     value = "--kubelet-insecure-tls"
   }
+  depends_on = [
+    var.todo_cluster,           # Ensure cluster is active
+    var.todo_front_nginx_config_s3             # Ensure S3 bucket exists for user_data
+  ]
 }
 
 #Prometheus & Grafana Stack
@@ -102,6 +115,10 @@ resource "helm_release" "prometheus" {
     name  = "grafana.adminPassword"
     value = var.grafana_admin_password
   }
+  depends_on = [
+    var.todo_cluster,           # Ensure cluster is active
+    var.todo_front_nginx_config_s3             # Ensure S3 bucket exists for user_data
+  ]
 }
 
 
@@ -122,6 +139,10 @@ resource "helm_release" "argocd" {
         }
       }
     })
+  ]
+  depends_on = [
+    var.todo_cluster,           # Ensure cluster is active
+    var.todo_front_nginx_config_s3             # Ensure S3 bucket exists for user_data
   ]
 }
 
@@ -152,6 +173,10 @@ resource "helm_release" "external_dns" {
     name  = "policy"
     value = "sync"
   }
+  depends_on = [
+    var.todo_cluster,           # Ensure cluster is active
+    var.todo_front_nginx_config_s3             # Ensure S3 bucket exists for user_data
+  ]
 }
 
 #Cluster Autoscaler
@@ -176,8 +201,12 @@ resource "helm_release" "cluster_autoscaler" {
     name  = "rbac.serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
     value = var.autoscaler_role_arn
   }
+  depends_on = [
+    var.todo_cluster,           # Ensure cluster is active
+    var.todo_front_nginx_config_s3             # Ensure S3 bucket exists for user_data
+  ]
 }
-*/
+
 
 #Create all namespaces
 resource "kubernetes_namespace" "db_namespace" {

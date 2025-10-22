@@ -33,3 +33,9 @@ variable "grafana_admin_password" {
   type        = string
   sensitive   = true
 }
+variable "todo_cluster" {
+  type = any
+}
+variable "todo_front_nginx_config_s3" {
+  type = any
+}
