@@ -39,3 +39,7 @@ variable "todo_cluster" {
 variable "todo_front_nginx_config_s3" {
   type = any
 }
+
+variable "oidc_provider_arn" {
+  type = string
+}

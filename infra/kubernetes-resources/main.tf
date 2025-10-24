@@ -44,9 +44,9 @@ resource "helm_release" "nginx_ingress" {
     value = var.lb_role_arn
   }
   depends_on = [
-    var.todo_cluster,           # Ensure cluster is active
-    
-    var.todo_front_nginx_config_s3             # Ensure S3 bucket exists for user_data
+    var.todo_cluster, # Ensure cluster is active
+
+    var.todo_front_nginx_config_s3 # Ensure S3 bucket exists for user_data
   ]
 }
 
@@ -73,8 +73,8 @@ resource "helm_release" "aws_ebs_csi_driver" {
     value = var.ebs_driver_role.arn
   }
   depends_on = [
-    var.todo_cluster,           # Ensure cluster is active
-    var.todo_front_nginx_config_s3             # Ensure S3 bucket exists for user_data
+    var.todo_cluster,              # Ensure cluster is active
+    var.todo_front_nginx_config_s3 # Ensure S3 bucket exists for user_data
   ]
 
 }
@@ -92,8 +92,8 @@ resource "helm_release" "metrics_server" {
     value = "--kubelet-insecure-tls"
   }
   depends_on = [
-    var.todo_cluster,           # Ensure cluster is active
-    var.todo_front_nginx_config_s3             # Ensure S3 bucket exists for user_data
+    var.todo_cluster,              # Ensure cluster is active
+    var.todo_front_nginx_config_s3 # Ensure S3 bucket exists for user_data
   ]
 }
 
@@ -116,8 +116,8 @@ resource "helm_release" "prometheus" {
     value = var.grafana_admin_password
   }
   depends_on = [
-    var.todo_cluster,           # Ensure cluster is active
-    var.todo_front_nginx_config_s3             # Ensure S3 bucket exists for user_data
+    var.todo_cluster,              # Ensure cluster is active
+    var.todo_front_nginx_config_s3 # Ensure S3 bucket exists for user_data
   ]
 }
 
@@ -141,8 +141,8 @@ resource "helm_release" "argocd" {
     })
   ]
   depends_on = [
-    var.todo_cluster,           # Ensure cluster is active
-    var.todo_front_nginx_config_s3             # Ensure S3 bucket exists for user_data
+    var.todo_cluster,              # Ensure cluster is active
+    var.todo_front_nginx_config_s3 # Ensure S3 bucket exists for user_data
   ]
 }
 
@@ -174,8 +174,8 @@ resource "helm_release" "external_dns" {
     value = "sync"
   }
   depends_on = [
-    var.todo_cluster,           # Ensure cluster is active
-    var.todo_front_nginx_config_s3             # Ensure S3 bucket exists for user_data
+    var.todo_cluster,              # Ensure cluster is active
+    var.todo_front_nginx_config_s3 # Ensure S3 bucket exists for user_data
   ]
 }
 
@@ -202,10 +202,149 @@ resource "helm_release" "cluster_autoscaler" {
     value = var.autoscaler_role_arn
   }
   depends_on = [
-    var.todo_cluster,           # Ensure cluster is active
-    var.todo_front_nginx_config_s3             # Ensure S3 bucket exists for user_data
+    var.todo_cluster,              # Ensure cluster is active
+    var.todo_front_nginx_config_s3 # Ensure S3 bucket exists for user_data
   ]
 }
+
+data "aws_caller_identity" "current" {}
+
+resource "aws_kms_key" "vault_key" {
+  description             = "An example symmetric encryption KMS key"
+  enable_key_rotation     = true
+  deletion_window_in_days = 20
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Id      = "key-default-1"
+    Statement = [
+      {
+        Sid    = "Enable IAM User Permissions"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::${data.aws_caller_identity.my_account.account_id}:root"
+        },
+        Action   = "kms:*"
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+resource "helm_release" "vault" {
+  name       = "vault"
+  repository = "https://helm.releases.hashicorp.com"
+  chart      = "vault"
+  namespace  = kubernetes_namespace.vault_namespace.metadata[0].name
+  version    = "0.28.0"
+
+  set {
+    name  = "server.ha.enabled"
+    value = "false"
+  }
+
+  set {
+    name  = "server.ha.raft.enabled"
+    value = "false"
+  }
+
+  set {
+    name  = "injector.enabled"
+    value = "true"
+  }
+
+  set {
+    name  = "server.service.type"
+    value = "ClusterIP"
+  }
+
+  set {
+    name  = "server.dataStorage.enabled"
+    value = "true"
+  }
+
+  set {
+    name  = "server.dataStorage.storageClass"
+    value = "ebs-sc"
+  }
+
+  set {
+    name  = "server.dataStorage.size"
+    value = "10Gi"
+  }
+
+  set {
+    name  = "server.serviceAccount.create"
+    value = "false"
+  }
+
+  set {
+    name  = "server.serviceAccount.name"
+    value = "vault-sa"
+  }
+
+  set {
+    name = "server.standalone.config"
+    value = format(<<EOF
+      seal "awskms" {
+        region     = "us-east-1"
+        kms_key_id = "%s"
+      }
+
+      storage "raft" {
+        path    = "/vault/data"
+        node_id = "vault-0"
+      }
+
+      listener "tcp" {
+        address         = "[::]:8200"
+        cluster_address = "[::]:8201"
+        tls_disable     = "true"
+      }
+
+      api_addr     = "http://vault.vault-ns.svc.cluster.local:8200"
+      cluster_addr = "http://vault-0.vault-internal:8201"
+      disable_mlock = true
+  EOF
+      ,
+      aws_kms_key.vault_key.id
+    )
+  }
+
+  # Depend on the namespace creation
+  depends_on = [kubernetes_namespace.vault_namespace,
+    kubernetes_storage_class.ebs_sc,
+    aws_kms_key.vault_key,
+    kubernetes_service_account.vault_sa
+  ]
+}
+
+#service account to allow vault pod to cotact aws for the unseal key
+resource "kubernetes_service_account" "vault_sa" {
+  metadata {
+    name      = "vault-sa"
+    namespace = kubernetes_namespace.vault_namespace.metadata[0].name
+    annotations = {
+      "eks.amazonaws.com/role-arn" = aws_iam_role.kms_role.arn
+    }
+  }
+}
+
+resource "kubernetes_storage_class" "ebs_sc" {
+  metadata {
+    name = "ebs-sc"
+  }
+
+  storage_provisioner = "ebs.csi.aws.com"
+
+  parameters = {
+    type = "gp3" # or gp2
+  }
+
+  reclaim_policy         = "Delete"
+  volume_binding_mode    = "WaitForFirstConsumer"
+  allow_volume_expansion = true
+}
+
 
 
 #Create all namespaces
@@ -225,5 +364,10 @@ resource "kubernetes_namespace" "front_namespace" {
   }
 }
 
+resource "kubernetes_namespace" "vault_namespace" {
+  metadata {
+    name = "vault-ns"
+  }
+}
 
 

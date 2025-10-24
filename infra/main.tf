@@ -32,4 +32,5 @@ module "kubernetes_resources" {
   grafana_admin_password = "admin123"
   todo_cluster = module.cluster.todo_cluster
   todo_front_nginx_config_s3  = module.cluster.todo_front_nginx_config_s3
+  oidc_provider_arn = module.cluster.oidc_provider_arn
 }

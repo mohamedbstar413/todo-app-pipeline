@@ -12,3 +12,5 @@ data "kubernetes_service" "nginx_ingress" {
   # Ensure this runs after the Helm release is applied
   depends_on = [helm_release.nginx_ingress]
 }
+
+data "aws_caller_identity" "my_account" {}

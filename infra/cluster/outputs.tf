@@ -34,3 +34,7 @@ output "todo_cluster" {
 output "todo_front_nginx_config_s3" {
   value = aws_s3_bucket.todo_front_nginx_config_s3
 }
+
+output "oidc_provider_arn" {
+  value = data.aws_iam_openid_connect_provider.oidc_provider.arn
+}
