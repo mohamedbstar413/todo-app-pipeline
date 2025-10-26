@@ -210,7 +210,7 @@ resource "helm_release" "cluster_autoscaler" {
 data "aws_caller_identity" "current" {}
 
 resource "aws_kms_key" "vault_key" {
-  description             = "An example symmetric encryption KMS key"
+  description             = "symmetric encryption KMS key"
   enable_key_rotation     = true
   deletion_window_in_days = 20
   policy = jsonencode({
@@ -230,7 +230,7 @@ resource "aws_kms_key" "vault_key" {
   })
 }
 
-resource "helm_release" "vault" {
+/*resource "helm_release" "vault" {
   name       = "vault"
   repository = "https://helm.releases.hashicorp.com"
   chart      = "vault"
@@ -316,8 +316,123 @@ resource "helm_release" "vault" {
     aws_kms_key.vault_key,
     kubernetes_service_account.vault_sa
   ]
-}
+}*/
 
+/*resource "null_resource" "vault_operator_initializer" {
+  depends_on = [ helm_release.vault ]
+  provisioner "local-exec" {
+    command = <<EOF
+      #connect to the cluster
+      aws eks update-kubeconfig --name todo-app-cluster --region us-east-1
+      
+      #wait for the vault-0 pod to be ready
+      kubectl wait --for=condition=Ready pod/vault-0 -n vault-ns --timeout=180s
+
+      until kubectl exec vault-0 -- vault status >/dev/null 2>&1; do
+        echo "Waiting for Vault..."
+        sleep 5
+      done
+      echo "Vault API ready"
+      #apk update
+      #apk add --no-cache curl
+      
+      #echo "⏳ Waiting for Vault API to respond..."
+      #for i in $(seq 1 30); do
+      #  if kubectl exec -n vault-ns vault-0 -- curl -s http://127.0.0.1:8200/v1/sys/health | grep -q 'sealed'; then
+      #   echo "Vault API is ready."
+      #    break
+      #  fi
+      #  echo "Waiting for Vault API... ($i/30)"
+      #  sleep 5
+      #done
+
+      if kubectl exec -n vault-ns vault-0 -- vault status | grep 'Initialized.*true'; then
+        echo "✅ Vault already initialized. Skipping init."
+      else
+        echo "🚀 Initializing Vault..."
+        kubectl exec -n vault-ns vault-0 -- vault operator init -key-shares=1 -key-threshold=1 -format=json > vault-init.json
+        echo "💾 Vault initialized. Keys written to vault-init.json"
+      fi
+
+    EOF
+  }
+  triggers = {
+    vault_release = helm_release.vault.metadata[0].name
+  }
+}
+*/
+/*resource "null_resource" "vault_operator_initializer" {
+  depends_on = [helm_release.vault]
+
+  # Re-run only when the Helm release changes (or you bump the version below)
+  triggers = {
+    helm_chart   = helm_release.vault.metadata[0].name
+    helm_version = helm_release.vault.metadata[0].version
+    run_id       = "v4"   # <-- bump this to force a new run
+  }
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      # -------------------------------------------------
+      # 1. Connect to the cluster
+      # -------------------------------------------------
+      aws eks update-kubeconfig --name todo-app-cluster --region us-east-1
+
+      # -------------------------------------------------
+      # 2. Wait for the pod to be Running + Ready
+      # -------------------------------------------------
+      echo "Waiting for vault-0 pod to be Ready (max 3 min)..."
+      if ! kubectl wait --for=condition=Ready pod/vault-0 -n vault-ns --timeout=180s; then
+        echo "Pod never became Ready – check logs:"
+        kubectl logs vault-0 -n vault-ns --tail=50
+        exit 1
+      fi
+
+      # -------------------------------------------------
+      # 3. Wait for Vault API to be reachable (max 60 s)
+      # -------------------------------------------------
+      echo "Probing Vault API (vault status)..."
+      for i in $(seq 1 12); do
+        if kubectl exec vault-0 -n vault-ns -- vault status >/dev/null 2>&1; then
+          break
+        fi
+        echo "Attempt $i/12 – Vault not responding yet"
+        sleep 5
+      done
+
+      # If still not reachable → abort with logs
+      if ! kubectl exec vault-0 -n vault-ns -- vault status >/dev/null 2>&1; then
+        echo "Vault API never came up. Dumping logs..."
+        kubectl logs vault-0 -n vault-ns --tail=100
+        exit 1
+      fi
+
+      # -------------------------------------------------
+      # 4. Parse vault status (sealed / initialized)
+      # -------------------------------------------------
+      STATUS=$(kubectl exec vault-0 -n vault-ns -- vault status -format=json)
+      SEALED=$(echo "$STATUS" | jq -r .sealed)
+      INITED=$(echo "$STATUS" | jq -r .initialized)
+
+      echo "Vault status – Sealed: $SEALED  Initialized: $INITED"
+
+      if [ "$INITED" = "true" ]; then
+        echo "Vault already initialized – nothing to do."
+        exit 0
+      fi
+
+      # -------------------------------------------------
+      # 5. Initialize (only if not initialized)
+      # -------------------------------------------------
+      echo "Initializing Vault (single-share, threshold 1)..."
+      kubectl exec vault-0 -n vault-ns -- vault operator init \
+        -key-shares=1 -key-threshold=1 -format=json > vault-init.json
+
+      echo "Vault initialized – root token & unseal key saved to vault-init.json"
+    EOT
+    interpreter = ["/bin/bash", "-c"]
+  }
+}
 #service account to allow vault pod to cotact aws for the unseal key
 resource "kubernetes_service_account" "vault_sa" {
   metadata {
@@ -327,7 +442,11 @@ resource "kubernetes_service_account" "vault_sa" {
       "eks.amazonaws.com/role-arn" = aws_iam_role.kms_role.arn
     }
   }
-}
+}*/
+
+
+
+
 
 resource "kubernetes_storage_class" "ebs_sc" {
   metadata {
@@ -337,7 +456,7 @@ resource "kubernetes_storage_class" "ebs_sc" {
   storage_provisioner = "ebs.csi.aws.com"
 
   parameters = {
-    type = "gp3" # or gp2
+    type = "gp3"
   }
 
   reclaim_policy         = "Delete"

@@ -43,3 +43,7 @@ variable "todo_front_nginx_config_s3" {
 variable "oidc_provider_arn" {
   type = string
 }
+
+variable "db_password" {
+  type = string
+}

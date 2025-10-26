@@ -8,19 +8,20 @@ spec:
   selector:
     matchLabels:
       app: mongodb
-  serviceName: mongodb-service
+  serviceName: mongodb-service #add this as an env for backend pods
   template:
     metadata:
       name: mongodb-pod
       labels:
         app: mongodb
     spec:
+      serviceAccountName: db_secret_sa
       terminationGracePeriodSeconds: 30
       securityContext:
         runAsNonRoot: true
       affinity:
         podAntiAffinity:  # Use anti-affinity to spread replicas
-          preferredDuringSchedulingIgnoredDuringExecution:
+          preferredDuringSchedulingIgnoredDuringExecution: #make it preferred to allow scheduling for first pod
             - weight: 100
               podAffinityTerm:
                 topologyKey: topology.kubernetes.io/zone
@@ -33,15 +34,20 @@ spec:
           ports:
             - containerPort: 27017
           env:
+            - name: POD_NAME  # ADD THIS
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
             - name: MONGO_INITDB_ROOT_USERNAME
               valueFrom:
                 secretKeyRef:
-                  name: mongodb-credentials
+                  name: db_secret
                   key: username
+                  
             - name: MONGO_INITDB_ROOT_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: mongodb-credentials
+                  name: db_secret
                   key: password
             - name: MONGODB_ADVERTISED_HOSTNAME
               value: "$(POD_NAME).mongodb-service.db-ns.svc.cluster.local"
@@ -49,6 +55,9 @@ spec:
           volumeMounts:
             - name: data-volume
               mountPath: /data/db
+            - name: secrets_store
+              mountPath: "/mnt/secrets-store"
+              readOnly: true
           livenessProbe:
             exec:
               command: ["mongosh", "--eval", "db.adminCommand('ping')"]
@@ -59,7 +68,13 @@ spec:
               command: ["mongosh", "--eval", "db.adminCommand('ping')"]
             initialDelaySeconds: 10
             periodSeconds: 5
-
+      volumes:
+        - name: secrets_store
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: db_secrets
   volumeClaimTemplates:
     - metadata:
         name: data-volume
@@ -69,3 +84,4 @@ spec:
         resources:
           requests:
             storage: 1Gi
+      
