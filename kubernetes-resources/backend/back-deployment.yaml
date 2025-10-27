@@ -15,6 +15,18 @@ spec:
       labels:
         app: backend
     spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: Equal
+                      values:
+                        - backend
+                topologyKey: topology.kubernetes.io/zone
+              weight: 100
       containers:
         - name: back-container
           image: bstar999/back-image-mini
@@ -23,8 +35,18 @@ spec:
           envFrom:
             - configMapRef:
                 name: back-config-map
-            - secretRef:
-                name: back-secret
+          env:
+            - name: MONGO_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: db_secret #the secret created by the secret provider
+                  key: username
+                  
+            - name: MONGO_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: db_secret
+                  key: password
           livenessProbe:
             httpGet:
               path: /api/health
