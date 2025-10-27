@@ -2,6 +2,15 @@ provider "aws" {
   region = "us-east-1"
 }
 
+terraform {
+  backend "s3" {
+    bucket = "todo_s3_remote_backend_14120"
+    region = "us-east-1"
+    key = "terraform.tfstate"
+    use_lockfile = true
+  }
+}
+
 module "network" {
   source            = "./network"
   vpc_cidr          = "10.0.0.0/16"
