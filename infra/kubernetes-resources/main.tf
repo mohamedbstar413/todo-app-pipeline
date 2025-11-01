@@ -475,18 +475,26 @@ resource "kubernetes_namespace" "db_namespace" {
 resource "kubernetes_namespace" "back_namespace" {
   metadata {
     name = "back-ns"
+    labels = {
+      app = "backend"
+    }
+
   }
 }
 resource "kubernetes_namespace" "front_namespace" {
   metadata {
     name = "front-ns"
+    labels = {
+      app = "frontend"
+    }
+
   }
 }
 
-resource "kubernetes_namespace" "vault_namespace" {
+/*resource "kubernetes_namespace" "vault_namespace" {
   metadata {
     name = "vault-ns"
   }
-}
+}*/
 
 

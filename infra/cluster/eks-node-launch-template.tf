@@ -34,7 +34,7 @@ unzip awscliv2.zip
 
 # Download config from S3
 mkdir -p /app-config
-aws s3 cp s3://${aws_s3_bucket.todo_front_nginx_config_s3.bucket}/config.conf /app-config/
+aws s3 cp s3://${aws_s3_bucket.todo_front_nginx_config_s3.bucket}/nginx.conf /app-config/
 
 # Any other setup
 echo "Setup complete"

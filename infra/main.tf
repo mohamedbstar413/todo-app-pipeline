@@ -4,7 +4,7 @@ provider "aws" {
 
 terraform {
   backend "s3" {
-    bucket = "todo_s3_remote_backend_14120"
+    bucket = "todo-s3-remote-backend-14120"
     region = "us-east-1"
     key = "terraform.tfstate"
     use_lockfile = true
