@@ -79,6 +79,7 @@ resource "helm_release" "aws_ebs_csi_driver" {
 
 }
 
+
 #Metrics Server
 resource "helm_release" "metrics_server" {
   name       = "metrics-server"

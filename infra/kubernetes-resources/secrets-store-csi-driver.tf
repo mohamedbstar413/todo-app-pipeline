@@ -14,6 +14,26 @@ resource "helm_release" "secrets_store_csi_driver" {
     value = "false"
   }
 }
+resource "helm_release" "secrets_store_csi_driver_provider_aws" {
+  name       = "secrets-store-csi-driver-provider-aws"
+  repository = "https://aws.github.io/secrets-store-csi-driver-provider-aws"
+  chart      = "secrets-store-csi-driver-provider-aws"
+  namespace  = "kube-system"
+
+  set {
+    name = "serviceAccount.create"
+    value = "false"
+  } 
+  set {
+    name = "serviceAccount.name"
+    value  = "secrets-store-csi-driver"
+  }
+  depends_on = [
+    helm_release.secrets_store_csi_driver,
+    var.todo_cluster
+  ]
+}
+
 # a service account to attach to the csi driver
 resource "kubernetes_service_account" "db_secret_sa" {
   metadata {
