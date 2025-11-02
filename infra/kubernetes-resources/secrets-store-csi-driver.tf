@@ -23,4 +23,4 @@ resource "kubernetes_service_account" "db_secret_sa" {
       "eks.amazonaws.com/role-arn" = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${aws_iam_role.db_secret_role.name}"
     }
   }
-}
+} 

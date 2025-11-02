@@ -1,0 +1,1338 @@
+provider "aws" {
+  region = "us-east-1"
+}
+
+terraform {
+  backend "s3" {
+    bucket = "todo-s3-remote-backend-14120"
+    region = "us-east-1"
+    key = "terraform.tfstate"
+    use_lockfile = true
+  }
+}
+
+module "network" {
+  source            = "./network"
+  vpc_cidr          = "10.0.0.0/16"
+  pub_subnet_1_cidr = "10.0.0.0/24"
+  pub_subnet_2_cidr = "10.0.1.0/24"
+  az_1              = "us-east-1a"
+  az_2              = "us-east-1b"
+  cluster_name      = "todo-app-cluster"
+}
+
+module "cluster" {
+  source       = "./cluster"
+  subnet_1_id  = module.network.subnet_1_id
+  subnet_2_id  = module.network.subnet_2_id
+  cluster_name = "todo-app-cluster"
+  vpc_id       = module.network.vpc_id
+}
+module "kubernetes_resources" {
+  source                = "./kubernetes-resources"
+  todo_cluster_ca       = module.cluster.todo_cluster_ca
+  todo_cluster_endpoint = module.cluster.todo_cluster_endpoint
+  todo_cluster_token    = module.cluster.todo_cluster_token
+  ebs_driver_role       = module.cluster.ebs_driver_role
+  lb_role_arn           = module.cluster.lb_role_arn
+  autoscaler_role_arn   = module.cluster.autoscaler_role_arn
+  cluster_name          = "todo-app-cluster"
+  aws_region            = "us-east-1"
+  grafana_admin_password = "admin123"
+  todo_cluster = module.cluster.todo_cluster
+  todo_front_nginx_config_s3  = module.cluster.todo_front_nginx_config_s3
+  oidc_provider_arn = module.cluster.oidc_provider_arn
+  db_password = var.db_password
+}
+variable "vpc_cidr" {
+  type = string
+}
+
+variable "pub_subnet_1_cidr" {
+  type = string
+}
+
+variable "pub_subnet_2_cidr" {
+  type = string
+}
+
+
+variable "az_1" {
+  type = string
+}
+
+variable "az_2" {
+  type = string
+}
+
+variable "cluster_name" {
+  type = string
+}output "subnet_1_id" {
+  value = aws_subnet.book_public_subnet_1.id
+}
+output "subnet_2_id" {
+  value = aws_subnet.book_public_subnet_2.id
+}
+output "vpc_id" {
+  value = aws_vpc.book_vpc.id
+}resource "aws_vpc" "book_vpc" {
+  cidr_block =                  var.vpc_cidr
+  enable_dns_hostnames =        true
+  enable_dns_support =          true
+
+  tags = {
+    Name=                       "Book Review App VPC"
+  }
+}
+
+resource "aws_internet_gateway" "book_igw" {
+  vpc_id =                      aws_vpc.book_vpc.id
+  tags = {
+    Name =                      "Book App IGW"
+  }
+}
+
+resource "aws_subnet" "book_public_subnet_1" {
+  vpc_id =                      aws_vpc.book_vpc.id
+  cidr_block =                  var.pub_subnet_1_cidr
+  availability_zone =           var.az_1
+  map_public_ip_on_launch =     true
+
+  tags = {
+    Name =                      "Book App Public Subnet",
+    "kubernetes.io/role/elb" =    "1",
+    "kubernetes.io/cluster/${var.cluster_name}" = "shared"
+  }
+}
+resource "aws_subnet" "book_public_subnet_2" {
+  vpc_id =                      aws_vpc.book_vpc.id
+  cidr_block =                  var.pub_subnet_2_cidr
+  availability_zone =           var.az_2
+  map_public_ip_on_launch =     true
+
+  tags = {
+    Name =                      "Book App Public Subnet 2",
+    "kubernetes.io/role/elb" =    "1",
+    "kubernetes.io/cluster/${var.cluster_name}" = "shared"
+  }
+}
+
+
+resource "aws_route_table" "book_public_route_table" {
+  vpc_id =                      aws_vpc.book_vpc.id
+  route {
+    cidr_block =                "0.0.0.0/0"
+    gateway_id =                aws_internet_gateway.book_igw.id
+  }
+  route {
+    cidr_block =                var.vpc_cidr
+    gateway_id =                "local"
+  }
+}
+
+
+resource "aws_route_table_association" "book_pub_rt_assoc" {
+  route_table_id =              aws_route_table.book_public_route_table.id
+  subnet_id =                   aws_subnet.book_public_subnet_1.id
+}
+
+resource "aws_route_table_association" "book_pub_rt_assoc_2" {
+  route_table_id =              aws_route_table.book_public_route_table.id
+  subnet_id =                   aws_subnet.book_public_subnet_2.id
+}variable "db_password" {
+  type = string
+}resource "helm_release" "secrets_store_csi_driver" {
+  name       = "secrets-store-csi-driver"
+  repository = "https://kubernetes-sigs.github.io/secrets-store-csi-driver/charts"
+  chart      = "secrets-store-csi-driver"
+  namespace  = "kube-system"
+
+  set {
+    name  = "syncSecret.enabled" #to create a kubernetes secret after mounting into volume
+    value = "true"
+  }
+
+  set {
+    name  = "enableSecretRotation"
+    value = "false"
+  }
+}
+# a service account to attach to the csi driver
+resource "kubernetes_service_account" "db_secret_sa" {
+  metadata {
+    name      = "db-secret-sa"
+    namespace = "db-ns"
+    annotations = {
+      "eks.amazonaws.com/role-arn" = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${aws_iam_role.db_secret_role.name}"
+    }
+  }
+}#NGINX Ingress Controller
+# NGINX Ingress Controller
+resource "helm_release" "nginx_ingress" {
+  name             = "ingress-nginx"
+  repository       = "https://kubernetes.github.io/ingress-nginx"
+  chart            = "ingress-nginx"
+  namespace        = "ingress-nginx"
+  create_namespace = true
+  version          = "4.8.3"
+
+  # Expose via AWS Load Balancer
+  set {
+    name  = "controller.service.type"
+    value = "LoadBalancer"
+  }
+
+  # Use AWS Network Load Balancer (NLB)
+  set {
+    name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-type"
+    value = "nlb"
+  }
+  # Make it INTERNET-FACING
+  set {
+    name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-scheme"
+    value = "internet-facing"
+  }
+
+  #cross-zone balancing
+  set {
+    name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-cross-zone-load-balancing-enabled"
+    value = "true"
+  }
+  # Specify the service account with IAM role
+  set {
+    name  = "controller.serviceAccount.create"
+    value = "true"
+  }
+  set {
+    name  = "controller.serviceAccount.name"
+    value = "ingress-nginx"
+  }
+  set {
+    name  = "controller.serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
+    value = var.lb_role_arn
+  }
+  depends_on = [
+    var.todo_cluster, # Ensure cluster is active
+
+    var.todo_front_nginx_config_s3 # Ensure S3 bucket exists for user_data
+  ]
+}
+
+resource "helm_release" "aws_ebs_csi_driver" {
+  name       = "aws-ebs-csi-driver"
+  repository = "https://kubernetes-sigs.github.io/aws-ebs-csi-driver"
+  chart      = "aws-ebs-csi-driver"
+  namespace  = "kube-system"
+  version    = "2.26.0"
+
+  set {
+    name  = "controller.serviceAccount.create"
+    value = "true"
+  }
+
+  set {
+    name  = "controller.serviceAccount.name"
+    value = "ebs-csi-controller-sa"
+  }
+
+  #IAM Roles for ebs-csi-controller-sa Service Account
+  set {
+    name  = "controller.serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
+    value = var.ebs_driver_role.arn
+  }
+  depends_on = [
+    var.todo_cluster,              # Ensure cluster is active
+    var.todo_front_nginx_config_s3 # Ensure S3 bucket exists for user_data
+  ]
+
+}
+
+#Metrics Server
+resource "helm_release" "metrics_server" {
+  name       = "metrics-server"
+  repository = "https://kubernetes-sigs.github.io/metrics-server/"
+  chart      = "metrics-server"
+  namespace  = "kube-system"
+  version    = "3.11.0"
+
+  set {
+    name  = "args[0]"
+    value = "--kubelet-insecure-tls"
+  }
+  depends_on = [
+    var.todo_cluster,              # Ensure cluster is active
+    var.todo_front_nginx_config_s3 # Ensure S3 bucket exists for user_data
+  ]
+}
+
+#Prometheus & Grafana Stack
+resource "helm_release" "prometheus" {
+  name             = "prometheus"
+  repository       = "https://prometheus-community.github.io/helm-charts"
+  chart            = "kube-prometheus-stack"
+  namespace        = "monitoring"
+  create_namespace = true
+  version          = "55.0.0"
+
+  set {
+    name  = "grafana.enabled"
+    value = "true"
+  }
+
+  set {
+    name  = "grafana.adminPassword"
+    value = var.grafana_admin_password
+  }
+  depends_on = [
+    var.todo_cluster,              # Ensure cluster is active
+    var.todo_front_nginx_config_s3 # Ensure S3 bucket exists for user_data
+  ]
+}
+
+
+#ArgoCD (GitOps)
+resource "helm_release" "argocd" {
+  name             = "argocd"
+  repository       = "https://argoproj.github.io/argo-helm"
+  chart            = "argo-cd"
+  namespace        = "argocd"
+  create_namespace = true
+  version          = "5.51.6"
+
+  values = [
+    yamlencode({
+      server = {
+        service = {
+          type = "LoadBalancer"
+        }
+      }
+    })
+  ]
+  depends_on = [
+    var.todo_cluster,              # Ensure cluster is active
+    var.todo_front_nginx_config_s3 # Ensure S3 bucket exists for user_data
+  ]
+}
+
+#External DNS (for automatic DNS management)
+resource "helm_release" "external_dns" {
+  name       = "external-dns"
+  repository = "https://kubernetes-sigs.github.io/external-dns/"
+  chart      = "external-dns"
+  namespace  = "kube-system"
+  version    = "1.14.0"
+
+  set {
+    name  = "provider"
+    value = "aws"
+  }
+
+  set {
+    name  = "aws.region"
+    value = "us-east-1"
+  }
+
+  set {
+    name  = "txtOwnerId"
+    value = var.cluster_name
+  }
+
+  set {
+    name  = "policy"
+    value = "sync"
+  }
+  depends_on = [
+    var.todo_cluster,              # Ensure cluster is active
+    var.todo_front_nginx_config_s3 # Ensure S3 bucket exists for user_data
+  ]
+}
+
+#Cluster Autoscaler
+resource "helm_release" "cluster_autoscaler" {
+  name       = "cluster-autoscaler"
+  repository = "https://kubernetes.github.io/autoscaler"
+  chart      = "cluster-autoscaler"
+  namespace  = "kube-system"
+  version    = "9.29.3"
+
+  set {
+    name  = "autoDiscovery.clusterName"
+    value = var.cluster_name
+  }
+
+  set {
+    name  = "awsRegion"
+    value = var.aws_region
+  }
+
+  set {
+    name  = "rbac.serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
+    value = var.autoscaler_role_arn
+  }
+  depends_on = [
+    var.todo_cluster,              # Ensure cluster is active
+    var.todo_front_nginx_config_s3 # Ensure S3 bucket exists for user_data
+  ]
+}
+
+data "aws_caller_identity" "current" {}
+
+resource "aws_kms_key" "vault_key" {
+  description             = "symmetric encryption KMS key"
+  enable_key_rotation     = true
+  deletion_window_in_days = 20
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Id      = "key-default-1"
+    Statement = [
+      {
+        Sid    = "Enable IAM User Permissions"
+        Effect = "Allow"
+        Principal = {
+          AWS = "arn:aws:iam::${data.aws_caller_identity.my_account.account_id}:root"
+        },
+        Action   = "kms:*"
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+/*resource "helm_release" "vault" {
+  name       = "vault"
+  repository = "https://helm.releases.hashicorp.com"
+  chart      = "vault"
+  namespace  = kubernetes_namespace.vault_namespace.metadata[0].name
+  version    = "0.28.0"
+
+  set {
+    name  = "server.ha.enabled"
+    value = "false"
+  }
+
+  set {
+    name  = "server.ha.raft.enabled"
+    value = "false"
+  }
+
+  set {
+    name  = "injector.enabled"
+    value = "true"
+  }
+
+  set {
+    name  = "server.service.type"
+    value = "ClusterIP"
+  }
+
+  set {
+    name  = "server.dataStorage.enabled"
+    value = "true"
+  }
+
+  set {
+    name  = "server.dataStorage.storageClass"
+    value = "ebs-sc"
+  }
+
+  set {
+    name  = "server.dataStorage.size"
+    value = "10Gi"
+  }
+
+  set {
+    name  = "server.serviceAccount.create"
+    value = "false"
+  }
+
+  set {
+    name  = "server.serviceAccount.name"
+    value = "vault-sa"
+  }
+
+  set {
+    name = "server.standalone.config"
+    value = format(<<EOF
+      seal "awskms" {
+        region     = "us-east-1"
+        kms_key_id = "%s"
+      }
+
+      storage "raft" {
+        path    = "/vault/data"
+        node_id = "vault-0"
+      }
+
+      listener "tcp" {
+        address         = "[::]:8200"
+        cluster_address = "[::]:8201"
+        tls_disable     = "true"
+      }
+
+      api_addr     = "http://vault.vault-ns.svc.cluster.local:8200"
+      cluster_addr = "http://vault-0.vault-internal:8201"
+      disable_mlock = true
+  EOF
+      ,
+      aws_kms_key.vault_key.id
+    )
+  }
+
+  # Depend on the namespace creation
+  depends_on = [kubernetes_namespace.vault_namespace,
+    kubernetes_storage_class.ebs_sc,
+    aws_kms_key.vault_key,
+    kubernetes_service_account.vault_sa
+  ]
+}*/
+
+/*resource "null_resource" "vault_operator_initializer" {
+  depends_on = [ helm_release.vault ]
+  provisioner "local-exec" {
+    command = <<EOF
+      #connect to the cluster
+      aws eks update-kubeconfig --name todo-app-cluster --region us-east-1
+      
+      #wait for the vault-0 pod to be ready
+      kubectl wait --for=condition=Ready pod/vault-0 -n vault-ns --timeout=180s
+
+      until kubectl exec vault-0 -- vault status >/dev/null 2>&1; do
+        echo "Waiting for Vault..."
+        sleep 5
+      done
+      echo "Vault API ready"
+      #apk update
+      #apk add --no-cache curl
+      
+      #echo "⏳ Waiting for Vault API to respond..."
+      #for i in $(seq 1 30); do
+      #  if kubectl exec -n vault-ns vault-0 -- curl -s http://127.0.0.1:8200/v1/sys/health | grep -q 'sealed'; then
+      #   echo "Vault API is ready."
+      #    break
+      #  fi
+      #  echo "Waiting for Vault API... ($i/30)"
+      #  sleep 5
+      #done
+
+      if kubectl exec -n vault-ns vault-0 -- vault status | grep 'Initialized.*true'; then
+        echo "✅ Vault already initialized. Skipping init."
+      else
+        echo "🚀 Initializing Vault..."
+        kubectl exec -n vault-ns vault-0 -- vault operator init -key-shares=1 -key-threshold=1 -format=json > vault-init.json
+        echo "💾 Vault initialized. Keys written to vault-init.json"
+      fi
+
+    EOF
+  }
+  triggers = {
+    vault_release = helm_release.vault.metadata[0].name
+  }
+}
+*/
+/*resource "null_resource" "vault_operator_initializer" {
+  depends_on = [helm_release.vault]
+
+  # Re-run only when the Helm release changes (or you bump the version below)
+  triggers = {
+    helm_chart   = helm_release.vault.metadata[0].name
+    helm_version = helm_release.vault.metadata[0].version
+    run_id       = "v4"   # <-- bump this to force a new run
+  }
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      # -------------------------------------------------
+      # 1. Connect to the cluster
+      # -------------------------------------------------
+      aws eks update-kubeconfig --name todo-app-cluster --region us-east-1
+
+      # -------------------------------------------------
+      # 2. Wait for the pod to be Running + Ready
+      # -------------------------------------------------
+      echo "Waiting for vault-0 pod to be Ready (max 3 min)..."
+      if ! kubectl wait --for=condition=Ready pod/vault-0 -n vault-ns --timeout=180s; then
+        echo "Pod never became Ready – check logs:"
+        kubectl logs vault-0 -n vault-ns --tail=50
+        exit 1
+      fi
+
+      # -------------------------------------------------
+      # 3. Wait for Vault API to be reachable (max 60 s)
+      # -------------------------------------------------
+      echo "Probing Vault API (vault status)..."
+      for i in $(seq 1 12); do
+        if kubectl exec vault-0 -n vault-ns -- vault status >/dev/null 2>&1; then
+          break
+        fi
+        echo "Attempt $i/12 – Vault not responding yet"
+        sleep 5
+      done
+
+      # If still not reachable → abort with logs
+      if ! kubectl exec vault-0 -n vault-ns -- vault status >/dev/null 2>&1; then
+        echo "Vault API never came up. Dumping logs..."
+        kubectl logs vault-0 -n vault-ns --tail=100
+        exit 1
+      fi
+
+      # -------------------------------------------------
+      # 4. Parse vault status (sealed / initialized)
+      # -------------------------------------------------
+      STATUS=$(kubectl exec vault-0 -n vault-ns -- vault status -format=json)
+      SEALED=$(echo "$STATUS" | jq -r .sealed)
+      INITED=$(echo "$STATUS" | jq -r .initialized)
+
+      echo "Vault status – Sealed: $SEALED  Initialized: $INITED"
+
+      if [ "$INITED" = "true" ]; then
+        echo "Vault already initialized – nothing to do."
+        exit 0
+      fi
+
+      # -------------------------------------------------
+      # 5. Initialize (only if not initialized)
+      # -------------------------------------------------
+      echo "Initializing Vault (single-share, threshold 1)..."
+      kubectl exec vault-0 -n vault-ns -- vault operator init \
+        -key-shares=1 -key-threshold=1 -format=json > vault-init.json
+
+      echo "Vault initialized – root token & unseal key saved to vault-init.json"
+    EOT
+    interpreter = ["/bin/bash", "-c"]
+  }
+}
+#service account to allow vault pod to cotact aws for the unseal key
+resource "kubernetes_service_account" "vault_sa" {
+  metadata {
+    name      = "vault-sa"
+    namespace = kubernetes_namespace.vault_namespace.metadata[0].name
+    annotations = {
+      "eks.amazonaws.com/role-arn" = aws_iam_role.kms_role.arn
+    }
+  }
+}*/
+
+
+
+
+
+resource "kubernetes_storage_class" "ebs_sc" {
+  metadata {
+    name = "ebs-sc"
+  }
+
+  storage_provisioner = "ebs.csi.aws.com"
+
+  parameters = {
+    type = "gp3"
+  }
+
+  reclaim_policy         = "Delete"
+  volume_binding_mode    = "WaitForFirstConsumer"
+  allow_volume_expansion = true
+}
+
+
+
+#Create all namespaces
+resource "kubernetes_namespace" "db_namespace" {
+  metadata {
+    name = "db-ns"
+  }
+}
+resource "kubernetes_namespace" "back_namespace" {
+  metadata {
+    name = "back-ns"
+    labels = {
+      app = "backend"
+    }
+
+  }
+}
+resource "kubernetes_namespace" "front_namespace" {
+  metadata {
+    name = "front-ns"
+    labels = {
+      app = "frontend"
+    }
+
+  }
+}
+
+/*resource "kubernetes_namespace" "vault_namespace" {
+  metadata {
+    name = "vault-ns"
+  }
+}*/
+
+
+resource "aws_secretsmanager_secret" "db_secret" {
+  name =            "todo_db_secret_4"
+}
+
+resource "aws_secretsmanager_secret_version" "db_secret_version" {
+  secret_id     = aws_secretsmanager_secret.db_secret.id
+  secret_string = jsonencode({
+    username = "admin"
+    password = var.db_password
+  })
+}
+
+variable "todo_cluster_endpoint" {
+  type = string
+}
+variable "todo_cluster_ca" {
+  type = string
+}
+variable "todo_cluster_token" {
+  type = string
+}
+variable "ebs_driver_role" {
+  type = object({
+    name = string
+    arn = string
+  })
+}
+
+variable "lb_role_arn" {
+  type = string
+}
+variable "autoscaler_role_arn" {
+  type = string
+}
+variable "cluster_name" {
+  type = string
+}
+variable "aws_region" {
+  type = string
+}
+
+variable "grafana_admin_password" {
+  description = "Grafana admin password"
+  type        = string
+  sensitive   = true
+}
+variable "todo_cluster" {
+  type = any
+}
+variable "todo_front_nginx_config_s3" {
+  type = any
+}
+
+variable "oidc_provider_arn" {
+  type = string
+}
+
+variable "db_password" {
+  type = string
+}output "nginx_ingress_loadbalancer" {
+  description = "Load balancer hostname for NGINX Ingress"
+  value       = helm_release.nginx_ingress.status
+}
+output "ingress_nginx_dns_name" {
+  value       = data.kubernetes_service.nginx_ingress.status[0].load_balancer[0].ingress[0].hostname
+  description = "The DNS name of the ingress-nginx controller's AWS Network Load Balancer"
+}
+terraform {
+  required_providers {
+    helm = {
+      source  = "hashicorp/helm"
+      version = "~> 2.11"
+    }
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "~> 2.23"
+    }
+  }
+}
+
+provider "kubernetes" {
+  host                   = var.todo_cluster_endpoint
+  cluster_ca_certificate = base64decode(var.todo_cluster_ca)
+  token                  = var.todo_cluster_token
+}
+
+provider "helm" {
+  kubernetes {
+    host                   = var.todo_cluster_endpoint
+    cluster_ca_certificate = base64decode(var.todo_cluster_ca)
+    token                  = var.todo_cluster_token
+  }
+}resource "aws_iam_role" "db_secret_role" {
+  name = "db_secret_role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Federated = data.aws_iam_openid_connect_provider.oidc.arn
+        }
+        Action = "sts:AssumeRoleWithWebIdentity"
+      }
+    ]
+
+  })
+}
+
+resource "aws_iam_policy" "db_secret_policy" {
+  name = "db_secret_policy"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "ReadDBSecret"
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:*"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "db_secret_role_policy_attachment" {
+  policy_arn = aws_iam_policy.db_secret_policy.arn
+  role = aws_iam_role.db_secret_role.name
+}data "aws_iam_role" "ebs_csi_driver_role" {
+    depends_on = [ var.ebs_driver_role ]
+  name = "AWS_EKS_EBS_CSI_Driver_Role"
+}
+# Data source to fetch the ingress-nginx service
+data "kubernetes_service" "nginx_ingress" {
+  metadata {
+    name      = "ingress-nginx-controller"
+    namespace = "ingress-nginx"
+  }
+
+  # Ensure this runs after the Helm release is applied
+  depends_on = [helm_release.nginx_ingress]
+}
+
+data "aws_caller_identity" "my_account" {}
+
+data "aws_eks_cluster" "todo_cluster" {
+  depends_on = [ var.todo_cluster ]
+  name = "todo-app-cluster"
+}
+data "aws_iam_openid_connect_provider" "oidc" {
+  depends_on = [ var.todo_cluster ]
+  url = data.aws_eks_cluster.todo_cluster.identity[0].oidc[0].issuer
+}# IAM Policy for my EBS CSI Driver
+resource "aws_iam_policy" "kms_policy" {
+  name        = "AmazonEKS_KMS_Policy"
+  description = "Policy for AWS KMS"
+  policy      = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "kms:*"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+# IAM Role with OIDC trust policy
+resource "aws_iam_role" "kms_role" {
+  name = "AWS_EKS_KMS_Role"
+  depends_on = [ helm_release.aws_ebs_csi_driver ] #just to make sure the cluster is created
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Federated = var.oidc_provider_arn
+        }
+        Action = "sts:AssumeRoleWithWebIdentity"
+      }
+    ]
+  })
+}
+
+# Attach policy to role
+resource "aws_iam_role_policy_attachment" "kms_attachment" {
+  role       = aws_iam_role.kms_role.name
+  policy_arn = aws_iam_policy.kms_policy.arn
+}
+
+# IAM Policy for my EBS CSI Driver
+resource "aws_iam_policy" "s3_policy" {
+  name        = "AmazonEKS_S3_Policy"
+  description = "Policy for node to get s3 contents"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:*"
+        ]
+
+        Resource = [
+          "arn:aws:s3:::${aws_s3_bucket.todo_front_nginx_config_s3.bucket}/*",  # Objects in the bucket
+          "arn:aws:s3:::${aws_s3_bucket.todo_front_nginx_config_s3.bucket}"     # Bucket itself
+        ]
+      }
+    ]
+  })
+}
+
+# IAM Role with OIDC trust policy
+resource "aws_iam_role" "s3_role" {
+  name       = "AWS_EKS_NODE_S3_Role"
+  depends_on = [aws_eks_cluster.todo_cluster]
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+}
+
+# Attach policy to role
+resource "aws_iam_role_policy_attachment" "s3_attachment" {
+  role       = aws_iam_role.s3_role.name
+  policy_arn = aws_iam_policy.s3_policy.arn
+}resource "aws_eks_cluster" "todo_cluster" {
+  name =                    "todo-app-cluster"
+  role_arn =                data.aws_iam_role.cluster_role.arn
+  vpc_config {
+    subnet_ids = [ 
+        var.subnet_1_id,
+        var.subnet_2_id
+     ]
+  }
+  timeouts {
+    create = "60m"  
+    delete = "40m" 
+  }
+}
+
+resource "aws_iam_openid_connect_provider" "oidc_provider" {
+  url             = aws_eks_cluster.todo_cluster.identity[0].oidc[0].issuer
+  client_id_list  = ["sts.amazonaws.com"]
+  thumbprint_list = ["9e99a48a9960b14926bb7f3b02e22da0ecd4e4b5"]
+}variable "subnet_1_id" {
+  type = string
+}
+
+variable "subnet_2_id" {
+  type = string
+}
+
+variable "cluster_name" {
+  type = string
+}
+
+variable "namespace" {
+  description = "Kubernetes namespace for the ServiceAccount"
+  type        = string
+  default     = "kube-system"
+}
+
+variable "service_account_name" {
+  description = "Kubernetes ServiceAccount name"
+  type        = string
+  default     = "ebs-csi-controller-sa"
+}
+
+
+variable "vpc_id" {
+  type = string
+}
+
+/*
+Load Balancer Variables
+*/
+
+variable "lb_iam_policy_url" {
+  type    = string
+  default = "https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.14.0/docs/install/iam_policy.json"
+  description = "URL to the official iam_policy.json."
+}
+
+variable "lb_iam_policy_name" {
+  type    = string
+  default = "AWSLoadBalancerControllerIAMPolicy"
+}
+
+variable "lb_iam_role_name" {
+  type    = string
+  default = "AWS_EKS_ALB_Controller_Role"
+}
+
+variable "lb_controller_sa_namespace" {
+  type    = string
+  default = "kube-system"
+}
+
+variable "lb_controller_sa_name" {
+  type    = string
+  default = "aws-load-balancer-controller"
+}
+resource "aws_eks_node_group" "todo_app_node_group" {
+  node_group_name =             "todo-app-node-group"
+  cluster_name =                aws_eks_cluster.todo_cluster.name
+  node_role_arn =               aws_iam_role.todo_iam_role.arn
+  subnet_ids =                  [var.subnet_1_id, var.subnet_2_id]
+   scaling_config {
+    desired_size = 2
+    max_size     = 3
+    min_size     = 1
+  }
+  update_config {
+    max_unavailable = 1
+  }
+
+  /*remote_access {
+    ec2_ssh_key =                "new-key" #to allow ssh into nodes
+  }*/
+  timeouts {
+    create = "60m"
+    delete = "40m"
+  }
+  launch_template {
+    version = "$Latest"
+    id = aws_launch_template.todo_app_node_launch_template.id
+  }
+  instance_types = [ "c7i-flex.large" ]
+}
+
+resource "aws_iam_role" "todo_iam_role" {
+  name = "todo_iam_role"
+
+  assume_role_policy = jsonencode({
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "ec2.amazonaws.com"
+      }
+    }]
+    Version = "2012-10-17"
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "todo_role_container_policy_attach" {
+  policy_arn = data.aws_iam_policy.eks_ec2_container_policy.arn
+  role       = aws_iam_role.todo_iam_role.name
+}
+
+resource "aws_iam_role_policy_attachment" "todo_role_eks_cni_policy_attach" {
+  policy_arn = data.aws_iam_policy.eks_cni_policy.arn
+  role       = aws_iam_role.todo_iam_role.name
+}
+
+resource "aws_iam_role_policy_attachment" "todo_role_eks_worker_node_policy_attach" {
+  policy_arn = data.aws_iam_policy.eks_worker_node_policy.arn
+  role       = aws_iam_role.todo_iam_role.name
+}
+resource "aws_iam_role_policy_attachment" "todo_role_s3_policy_attach" {
+  policy_arn = data.aws_iam_policy.eks_node_s3_policy.arn
+  role = aws_iam_role.s3_role.name
+}output "todo_cluster_endpoint" {
+  value = aws_eks_cluster.todo_cluster.endpoint
+}
+
+output "todo_cluster_ca" {
+  value = aws_eks_cluster.todo_cluster.certificate_authority[0].data
+}
+
+output "todo_cluster_token" {
+  value = data.aws_eks_cluster_auth.todo_cluster.token
+}
+output "ebs_driver_role" {
+  value = aws_iam_role.ebs_csi_role
+}
+#lb role ARN
+output "lb_role_arn" {
+  description = "ARN of the IAM role for ingress-nginx controller"
+  value       = aws_iam_role.lb_role.arn
+}
+#ebs csi driver role ARN
+output "ebs_csi_role_arn" {
+  description = "ARN of the IAM role for EBS CSI driver"
+  value       = aws_iam_role.ebs_csi_role.arn
+}
+
+#autoscaler role arn
+output "autoscaler_role_arn" {
+  value = aws_iam_role.auto_scaler_role.arn
+}
+
+output "todo_cluster" {
+  value = aws_eks_cluster.todo_cluster
+}
+output "todo_front_nginx_config_s3" {
+  value = aws_s3_bucket.todo_front_nginx_config_s3
+}
+
+output "oidc_provider_arn" {
+  value = data.aws_iam_openid_connect_provider.oidc_provider.arn
+}resource "aws_launch_template" "todo_app_node_launch_template" {
+  name = "todo_app_node_launch_template"
+
+  key_name = "new-key"
+  user_data = base64encode(<<-EOF
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="==MYBOUNDARY=="
+
+--==MYBOUNDARY==
+Content-Type: text/x-shellscript; charset="us-ascii"
+
+#!/bin/bash
+set -ex
+
+# Bootstrap EKS (REQUIRED - replace cluster_name with your actual cluster name)
+/etc/eks/bootstrap.sh ${aws_eks_cluster.todo_cluster.name}
+
+--==MYBOUNDARY==
+Content-Type: text/x-shellscript; charset="us-ascii"
+
+#!/bin/bash
+set -ex
+
+# Your custom commands run AFTER EKS bootstrap
+echo "Running custom setup"
+yum install -y htop vim
+# Add more commands here
+
+# Install AWS CLI
+yum install -y unzip
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+./aws/install
+
+# Download config from S3
+mkdir -p /app-config
+aws s3 cp s3://${aws_s3_bucket.todo_front_nginx_config_s3.bucket}/nginx.conf /app-config/
+
+# Any other setup
+echo "Setup complete"
+
+--==MYBOUNDARY==--
+EOF
+  )
+}
+resource "aws_s3_bucket" "todo_front_nginx_config_s3" {
+  bucket =              "todo-front-nginx-config-s3-unique-14120"
+  force_destroy =       true
+}
+
+resource "aws_s3_bucket_public_access_block" "todo_s3_access_block" {
+  bucket =              aws_s3_bucket.todo_front_nginx_config_s3.id
+
+  
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+
+resource "null_resource" "upload_nginx_conf_file" {
+  depends_on = [ aws_s3_bucket.todo_front_nginx_config_s3 ]
+
+  provisioner "local-exec" {
+    command = <<EOT
+      aws s3 cp nginx.conf s3://${aws_s3_bucket.todo_front_nginx_config_s3.bucket}/
+    EOT
+  }
+}
+
+
+output "config_s3_url" {
+  value = aws_s3_bucket.todo_front_nginx_config_s3.bucket_domain_name
+}
+# IAM Policy for my EBS CSI Driver
+resource "aws_iam_policy" "lb_policy" {
+  name        = "AmazonEKS_LB_Policy"
+  description = "Policy for ingress-nginx controller"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "elasticloadbalancing:*",
+          "ec2:*"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+# IAM Role with OIDC trust policy
+resource "aws_iam_role" "lb_role" {
+  name       = "AWS_EKS_INGRESS_NGINX_Driver_Role"
+  depends_on = [aws_eks_cluster.todo_cluster]
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Federated = data.aws_iam_openid_connect_provider.oidc_provider.arn
+        }
+        Action = "sts:AssumeRoleWithWebIdentity"
+      }
+    ]
+  })
+}
+
+# Attach policy to role
+resource "aws_iam_role_policy_attachment" "lb_attachment" {
+  role       = aws_iam_role.lb_role.name
+  policy_arn = aws_iam_policy.lb_policy.arn
+}
+
+
+data "aws_iam_role" "cluster_role" {
+  name =                "AmazonEKSAutoClusterRole"
+}
+
+data "aws_iam_policy" "eks_ec2_container_policy" {
+  name = "AmazonEC2ContainerRegistryReadOnly"
+}
+
+data "aws_iam_policy" "eks_cni_policy" {
+  name = "AmazonEKS_CNI_Policy"
+}
+
+data "aws_iam_policy" "eks_worker_node_policy" {
+  name = "AmazonEKSWorkerNodePolicy"
+}
+data "aws_iam_policy" "eks_node_s3_policy" {
+  name = "AmazonS3FullAccess"
+}
+data "aws_ami" "ubuntu" {
+  most_recent = true
+
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+
+  owners = ["099720109477"] # Canonical’s official AWS account ID
+}
+
+data "aws_caller_identity" "current" {}
+
+# Data source to get the EKS cluster OIDC issuer URL
+data "aws_eks_cluster" "cluster" {
+  name = var.cluster_name
+  depends_on = [ aws_eks_cluster.todo_cluster ]
+}
+# Data source to fetch the EKS cluster authentication token
+data "aws_eks_cluster_auth" "todo_cluster" {
+  name = aws_eks_cluster.todo_cluster.name
+}
+
+# Data source to get the OIDC provider ARN
+data "aws_iam_openid_connect_provider" "oidc_provider" {
+  url = data.aws_eks_cluster.cluster.identity[0].oidc[0].issuer
+  depends_on = [ aws_eks_cluster.todo_cluster , aws_iam_openid_connect_provider.oidc_provider]
+}# IAM Policy for my EBS CSI Driver
+resource "aws_iam_policy" "auto_scaler_policy" {
+  name        = "AmazonEKS_AutoScaling_Policy"
+  description = "Policy for cluster auto scaler"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "autoscaling:*",
+          "ec2:*"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+# IAM Role with OIDC trust policy
+resource "aws_iam_role" "auto_scaler_role" {
+  name       = "AWS_EKS_Cluster_Auto_Scaler_Role"
+  depends_on = [aws_eks_cluster.todo_cluster]
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Federated = data.aws_iam_openid_connect_provider.oidc_provider.arn
+        }
+        Action = "sts:AssumeRoleWithWebIdentity"
+      }
+    ]
+  })
+}
+
+# Attach policy to role
+resource "aws_iam_role_policy_attachment" "auto_scaler_attachment" {
+  role       = aws_iam_role.auto_scaler_role.name
+  policy_arn = aws_iam_policy.auto_scaler_policy.arn
+}
+
+
+# IAM Policy for my EBS CSI Driver
+resource "aws_iam_policy" "ebs_csi_policy" {
+  name        = "AmazonEKS_EBS_CSI_Driver_Policy"
+  description = "Policy for AWS EBS CSI Driver"
+  policy      = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ec2:*"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+# IAM Role with OIDC trust policy
+resource "aws_iam_role" "ebs_csi_role" {
+  name = "AWS_EKS_EBS_CSI_Driver_Role"
+  depends_on = [ aws_eks_cluster.todo_cluster ]
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Federated = data.aws_iam_openid_connect_provider.oidc_provider.arn
+        }
+        Action = "sts:AssumeRoleWithWebIdentity"
+      }
+    ]
+  })
+}
+
+# Attach policy to role
+resource "aws_iam_role_policy_attachment" "ebs_csi_attachment" {
+  role       = aws_iam_role.ebs_csi_role.name
+  policy_arn = aws_iam_policy.ebs_csi_policy.arn
+}
+
