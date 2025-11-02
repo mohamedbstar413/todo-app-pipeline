@@ -15,10 +15,10 @@ spec:
       labels:
         app: mongodb
     spec:
-      serviceAccountName: db_secret_sa
+      serviceAccountName: "db-secret-sa"
       terminationGracePeriodSeconds: 30
-      securityContext:
-        runAsNonRoot: true
+      #securityContext:
+      #  runAsNonRoot: true
       affinity:
         podAntiAffinity:  # Use anti-affinity to spread replicas
           preferredDuringSchedulingIgnoredDuringExecution: #make it preferred to allow scheduling for first pod
@@ -30,7 +30,7 @@ spec:
                     app: mongodb
       containers:
         - name: mongodb-container
-          image: mongodb/mongodb-community-server:7.0.1
+          image: mongo:7.0
           ports:
             - containerPort: 27017
           env:
@@ -41,13 +41,13 @@ spec:
             - name: MONGO_INITDB_ROOT_USERNAME
               valueFrom:
                 secretKeyRef:
-                  name: db_secret
+                  name: db-secret
                   key: username
                   
             - name: MONGO_INITDB_ROOT_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: db_secret
+                  name: db-secret
                   key: password
             - name: MONGODB_ADVERTISED_HOSTNAME
               value: "$(POD_NAME).mongodb-service.db-ns.svc.cluster.local"
@@ -55,7 +55,7 @@ spec:
           volumeMounts:
             - name: data-volume
               mountPath: /data/db
-            - name: secrets_store
+            - name: secrets-store
               mountPath: "/mnt/secrets-store"
               readOnly: true
           livenessProbe:
@@ -69,12 +69,12 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 5
       volumes:
-        - name: secrets_store
+        - name: secrets-store
           csi:
             driver: secrets-store.csi.k8s.io
             readOnly: true
             volumeAttributes:
-              secretProviderClass: db_secrets
+              secretProviderClass: db-secrets
   volumeClaimTemplates:
     - metadata:
         name: data-volume
