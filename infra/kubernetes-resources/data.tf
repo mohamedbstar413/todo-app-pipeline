@@ -20,6 +20,11 @@ data "aws_eks_cluster" "todo_cluster" {
   name = "todo-app-cluster"
 }
 data "aws_iam_openid_connect_provider" "oidc" {
-  depends_on = [ var.todo_cluster ]
   url = data.aws_eks_cluster.todo_cluster.identity[0].oidc[0].issuer
 }
+
+/*resource "aws_iam_openid_connect_provider" "oidc" {
+  url = data.aws_eks_cluster.todo_cluster.identity[0].oidc[0].issuer
+  client_id_list = ["sts.amazonaws.com"]
+  thumbprint_list = [data.tls_certificate.eks_oidc_cert.certificates[0].sha1_fingerprint]
+}*/

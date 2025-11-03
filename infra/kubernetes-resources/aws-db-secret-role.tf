@@ -6,7 +6,7 @@ resource "aws_iam_role" "db_secret_role" {
       {
         Effect = "Allow"
         Principal = {
-          Federated = data.aws_iam_openid_connect_provider.oidc.arn
+          Federated = var.oidc_provider_arn #aws_iam_openid_connect_provider.oidc.arn
         }
         Action = "sts:AssumeRoleWithWebIdentity"
       }
