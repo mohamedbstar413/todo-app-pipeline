@@ -3,5 +3,11 @@ kind: Service
 
 metadata:
   name: back-service
+  namespace: back-ns
 spec:
-  type: LoadBalancer
+  type: ClusterIP
+  selector:
+    app: backend
+  ports:
+    - port: 8080
+  

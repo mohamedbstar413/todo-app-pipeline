@@ -3,6 +3,7 @@ kind: ConfigMap
 
 metadata:
   name: back-config-map
+  namespace: back-ns
 data:
   MONGO_CONN_STR: "mongodb://mongodb-service.db-ns.svc.cluster.local:27017?authSource=admin"
   USE_DB_AUTH: "true"

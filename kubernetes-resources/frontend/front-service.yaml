@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: front-service
+  namespace: front-ns
+  labels:
+    service: front
+spec:
+  selector:
+    app: front
+  ports:
+    - port: 8080
+  type: ClusterIP #internal service and adding load balancing
+  

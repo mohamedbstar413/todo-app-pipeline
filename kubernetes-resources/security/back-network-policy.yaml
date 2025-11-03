@@ -1,0 +1,18 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+
+metadata:
+  name: back-net-policy
+  namespace: back-ns
+spec:
+  podSelector:
+    matchLabels:
+      app: backend
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              app: frontend #namespace of frontend
+      ports:
+        - protocol: TCP
+          port: 8080 #backend connection port
