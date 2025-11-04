@@ -21,8 +21,13 @@ Content-Type: text/x-shellscript; charset="us-ascii"
 #!/bin/bash
 set -ex
 
-# Your custom commands run AFTER EKS bootstrap
+# my custom commands 
 echo "Running custom setup"
+#waiting for network connection
+until ping -c1 8.8.8.8 &>/dev/null ; do
+  echo "Network not ready yet... retrying in 3s"
+  sleep 3
+done
 yum install -y htop vim
 # Add more commands here
 

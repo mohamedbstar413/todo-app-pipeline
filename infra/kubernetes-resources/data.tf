@@ -19,9 +19,9 @@ data "aws_eks_cluster" "todo_cluster" {
   depends_on = [ var.todo_cluster ]
   name = "todo-app-cluster"
 }
-data "aws_iam_openid_connect_provider" "oidc" {
+/*data "aws_iam_openid_connect_provider" "oidc" {
   url = data.aws_eks_cluster.todo_cluster.identity[0].oidc[0].issuer
-}
+}*/
 
 /*resource "aws_iam_openid_connect_provider" "oidc" {
   url = data.aws_eks_cluster.todo_cluster.identity[0].oidc[0].issuer
