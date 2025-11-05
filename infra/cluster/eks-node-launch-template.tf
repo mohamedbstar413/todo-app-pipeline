@@ -4,47 +4,50 @@ resource "aws_launch_template" "todo_app_node_launch_template" {
   key_name = "new-key"
   user_data = base64encode(<<-EOF
 MIME-Version: 1.0
-Content-Type: multipart/mixed; boundary="==MYBOUNDARY=="
+Content-Type: multipart/mixed; boundary="MIMEBOUNDARY"
 
---==MYBOUNDARY==
+--MIMEBOUNDARY
 Content-Type: text/x-shellscript; charset="us-ascii"
 
 #!/bin/bash
 set -ex
 
-# Bootstrap EKS (REQUIRED - replace cluster_name with your actual cluster name)
-/etc/eks/bootstrap.sh ${aws_eks_cluster.todo_cluster.name}
+# Initialize EKS node (AL2023 AMI uses nodeadm)
+cat <<CONFIG >/etc/nodeadm.yaml
+apiVersion: node.eks.aws/v1alpha1
+kind: NodeConfig
+spec:
+  cluster:
+    name: ${aws_eks_cluster.todo_cluster.name}
+CONFIG
 
---==MYBOUNDARY==
-Content-Type: text/x-shellscript; charset="us-ascii"
+sudo nodeadm join --config /etc/nodeadm.yaml
 
-#!/bin/bash
-set -ex
-
-# my custom commands 
 echo "Running custom setup"
-#waiting for network connection
+
+# Wait for network connection
 until ping -c1 8.8.8.8 &>/dev/null ; do
   echo "Network not ready yet... retrying in 3s"
   sleep 3
 done
-yum install -y htop vim
-# Add more commands here
 
-# Install AWS CLI
-yum install -y unzip
-curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-unzip awscliv2.zip
-./aws/install
+yum install -y htop vim unzip -y
 
-# Download config from S3
+# Install AWS CLI if not installed
+if ! command -v aws &>/dev/null; then
+  curl -s "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+  unzip -o awscliv2.zip
+  ./aws/install || true
+fi
+
+# Download nginx config from S3
 mkdir -p /app-config
-aws s3 cp s3://${aws_s3_bucket.todo_front_nginx_config_s3.bucket}/nginx.conf /app-config/
+aws s3 cp s3://${aws_s3_bucket.todo_front_nginx_config_s3.bucket}/nginx.conf /app-config/ || echo "S3 copy failed"
 
-# Any other setup
 echo "Setup complete"
 
---==MYBOUNDARY==--
+--MIMEBOUNDARY--
 EOF
   )
+
 }
