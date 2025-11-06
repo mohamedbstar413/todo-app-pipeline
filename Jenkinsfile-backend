@@ -1,28 +1,59 @@
 pipeline {
-    agent any
-    tools {
-        nodejs 'node-js'
+  agent {
+    kubernetes {
+    yaml """
+        apiVersion: v1
+        kind: Pod
+        spec:
+            containers:
+                -   name: docker-dind
+                    image: docker:24.0.7-dind
+                    securityContext:
+                        privileged: true
+                    args: ["--registry-mirror=https://mirror.gcr.io"]
+                -   name: docker
+                    image: docker:24.0.7-cli
+                    env:
+                        -   name: DOCKER_HOST
+                            value: tcp://localhost:2375
+                    command: ['cat']
+                    tty: true
+                -   name: git
+                    image: alpine/git
+                    command: ['cat']
+                    tty: true
+    """
     }
-    environment{
-        DOCKER_REPO="bstar999"
-    }
-    stages {
-        stage('pull code') {
-            steps {
-                git branch: 'main', url: 'https://github.com/mohamedbstar413/todo-app-pipeline.git'
-            }
+  }
+
+  environment {
+    DOCKER_REPO = "bstar999"
+  }
+
+  stages {
+    stage('pull code') {
+      steps {
+        container('git') {
+          sh 'git clone "https://github.com/mohamedbstar413/todo-app-pipeline.git"'
         }
-        stage('build image and push to the docker hub') {
-            steps {
-                dir('app-code/backend') {
-                    withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
-                        sh 'docker login -u $USER -p $PASS'
-                        sh 'docker build -t back-image-mini .'
-                        sh "docker tag back-image-mini ${DOCKER_REPO}/back-image-mini"
-                        sh "docker push ${DOCKER_REPO}/back-image-mini"
-                    }
-                }
-            }
-        }
+      }
     }
+
+    stage('build image and push to Docker Hub') {
+      steps {
+        dir('app-code/backend') {
+          container('docker') {
+            withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+              sh '''
+                docker login -u $USER -p $PASS
+                docker build -t back-image-mini .
+                docker tag back-image-mini ${DOCKER_REPO}/back-image-mini
+                docker push ${DOCKER_REPO}/back-image-mini
+              '''
+            }
+          }
+        }
+      }
+    }
+  }
 }
