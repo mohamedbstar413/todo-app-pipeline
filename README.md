@@ -250,11 +250,9 @@ This project implements a **production-ready, cloud-native todo application** th
 | **Multi-AZ Deployment** | Resources distributed across 2 availability zones | 99.99% uptime SLA | ✅ Active |
 | **Auto-Scaling** | HPA for pods + Cluster Autoscaler for nodes | Cost optimization + performance | ✅ Active |
 | **Dynamic Storage** | EBS CSI driver with automatic volume provisioning | Zero manual intervention | ✅ Active |
-| **Service Mesh Ready** | Network policies + Ingress controller | Secure communication | ✅ Active |
+| **Secure Communication** | Network policies + Ingress controller | Secure communication | ✅ Active |
 | **Secrets Management** | AWS Secrets Manager + CSI driver | Zero hardcoded credentials | ✅ Active |
-| **Custom Metrics** | Prometheus with custom collectors | Advanced autoscaling triggers | ✅ Active |
 | **Load Balancing** | AWS NLB with cross-zone balancing | High availability | ✅ Active |
-| **DNS Automation** | External DNS with Route53 | Automatic DNS management | ✅ Active |
 
 ### 🔄 CI/CD Features
 
@@ -262,23 +260,11 @@ This project implements a **production-ready, cloud-native todo application** th
 <summary><b>📦 Continuous Integration (Jenkins)</b></summary>
 
 ```yaml
-Pipeline Features:
-  - Automated builds on Git push
-  - Multi-stage build process
-  - Docker image creation & scanning
-  - Unit & integration tests
-  - Code quality checks (SonarQube ready)
-  - Artifact publishing to registries
-  - Slack/Email notifications
-
 Pipeline Stages:
   1. Checkout → Clone repository
-  2. Build → Compile application
-  3. Test → Run test suites
-  4. Security Scan → Vulnerability scanning
-  5. Docker Build → Create container images
-  6. Push → Publish to registry
-  7. Deploy → Trigger ArgoCD sync
+  2. Docker Build → Create container images
+  3. Push → Publish to registry
+  4. Deploy → Trigger ArgoCD sync
 ```
 
 </details>
@@ -301,109 +287,10 @@ Applications Managed:
   1. todo-app-db → Database layer
   2. todo-app-backend → API services
   3. todo-app-front → Frontend application
-  4. todo-app-jenkins → CI infrastructure
+  4. todo-app-jenkins → PV and PVC for Jenkins
 ```
 
 </details>
-
-### 📊 Observability Features
-
-<table>
-<tr>
-<th>Component</th>
-<th>Metrics Collected</th>
-<th>Alerts Configured</th>
-<th>Dashboards Available</th>
-</tr>
-<tr>
-<td><b>Application</b></td>
-<td>
-• Request rate<br/>
-• Response latency<br/>
-• Error rate<br/>
-• Success rate<br/>
-• Active connections
-</td>
-<td>
-• High error rate (>5%)<br/>
-• Slow response (>500ms)<br/>
-• Service unavailable<br/>
-• High memory usage
-</td>
-<td>
-• Application Performance<br/>
-• API Metrics<br/>
-• User Activity<br/>
-• Business KPIs
-</td>
-</tr>
-<tr>
-<td><b>Infrastructure</b></td>
-<td>
-• CPU utilization<br/>
-• Memory usage<br/>
-• Disk I/O<br/>
-• Network traffic<br/>
-• Pod status
-</td>
-<td>
-• Node resource exhaustion<br/>
-• Disk space low<br/>
-• Network saturation<br/>
-• Pod crash loops
-</td>
-<td>
-• Cluster Health<br/>
-• Node Metrics<br/>
-• Resource Usage<br/>
-• Cost Analysis
-</td>
-</tr>
-<tr>
-<td><b>Database</b></td>
-<td>
-• Active connections<br/>
-• Query performance<br/>
-• Replication lag<br/>
-• Storage usage<br/>
-• Cache hit ratio
-</td>
-<td>
-• Connection pool full<br/>
-• Slow queries (>1s)<br/>
-• Storage > 80%<br/>
-• Replication issues
-</td>
-<td>
-• MongoDB Metrics<br/>
-• Query Analysis<br/>
-• Connection Pools<br/>
-• Storage Trends
-</td>
-</tr>
-<tr>
-<td><b>Business</b></td>
-<td>
-• User registrations<br/>
-• Todo operations<br/>
-• API calls per endpoint<br/>
-• Feature usage<br/>
-• User engagement
-</td>
-<td>
-• Unusual traffic patterns<br/>
-• Feature errors<br/>
-• Business KPI anomalies<br/>
-• User experience issues
-</td>
-<td>
-• Business Overview<br/>
-• User Analytics<br/>
-• Feature Usage<br/>
-• Conversion Funnels
-</td>
-</tr>
-</table>
 
 ### 🔒 Security Features
 
@@ -416,7 +303,6 @@ graph TD
 
     B --> B1[Network Policies]
     B --> B2[Security Groups]
-    B --> B3[TLS/SSL]
     
     C --> C1[RBAC]
     C --> C2[IAM IRSA]
@@ -424,10 +310,8 @@ graph TD
     
     D --> D1[Secrets Manager]
     D --> D2[Encryption at Rest]
-    D --> D3[Encryption in Transit]
     
     E --> E1[Pod Security Context]
-    E --> E2[Container Scanning]
     E --> E3[Admission Controllers]
 ```
 
@@ -437,7 +321,6 @@ graph TD
 #### Network Security
 - ✅ **Network Policies**: Namespace isolation with explicit allow rules
 - ✅ **Security Groups**: AWS-level traffic filtering
-- ✅ **TLS Termination**: HTTPS at load balancer
 - ✅ **Private Networking**: Internal service communication
 
 #### Identity & Access Management
@@ -599,8 +482,8 @@ graph TD
 │                     VPC: 10.0.0.0/16                                 │
 │                     • DNS Hostname: Enabled                          │
 │                     • DNS Resolution: Enabled                        │
-│                     • DHCP Options: Default                          │
-├─────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+├─────────────────────────────────────────────────────────────────────-┤
 │                                                                       │
 │  ┌──────────────────────────┐    ┌──────────────────────────┐      │
 │  │  Availability Zone A     │    │  Availability Zone B     │      │
