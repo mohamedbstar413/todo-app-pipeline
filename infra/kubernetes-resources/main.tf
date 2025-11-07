@@ -132,22 +132,147 @@ resource "helm_release" "argocd" {
   create_namespace = true
   version          = "5.51.6"
 
-  values = [
-    yamlencode({
-      server = {
-        service = {
-          type = "LoadBalancer"
-        }
-      }
-    })
-  ]
+  set{
+    name = "server.service.type"
+    value = "LoadBalancer"
+  }
   depends_on = [
     var.todo_cluster,              # Ensure cluster is active
     var.todo_front_nginx_config_s3 # Ensure S3 bucket exists for user_data
   ]
 }
 
-#External DNS (for automatic DNS management)
+resource "null_resource" "argocd_login" {
+  depends_on = [helm_release.argocd]
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      set -e
+
+      kubectl -n argocd wait --for=condition=available deployment/argocd-server --timeout=180s
+
+      ARGOCD_HOST=$(kubectl -n argocd get svc argocd-server -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+      if [ -z "$ARGOCD_HOST" ]; then
+        ARGOCD_HOST=$(kubectl -n argocd get svc argocd-server -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+      fi
+
+      echo "ArgoCD Host: https://$ARGOCD_HOST"
+
+      #get admin password
+      ADMIN_PASS=$(kubectl -n argocd get secret argocd-initial-admin-secret \
+        -o jsonpath='{.data.password}' | base64 --decode)
+
+      #login
+      argocd login $ARGOCD_HOST --username admin --password "$ADMIN_PASS" --insecure --grpc-web
+
+      #generate ArgoCD token
+      argocd account generate-token --account admin > argocd-token.txt
+      echo "Token saved to argocd-token.txt"
+    EOT
+  }
+}
+
+resource "null_resource" "argocd_db_app" {
+  depends_on = [null_resource.argocd_login]
+
+  provisioner "local-exec" {
+    command = <<EOT
+      set -e
+      ARGOCD_HOST=$(kubectl -n argocd get svc argocd-server -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+      TOKEN=$(cat argocd-token.txt)
+
+      argocd app create todo-app-db \
+        --repo https://github.com/mohamedbstar413/todo-app-pipeline.git \
+        --path kubernetes-resources/db \
+        --dest-server https://kubernetes.default.svc \
+        --dest-namespace db-ns \
+        --sync-policy automated \
+        --self-heal \
+        --grpc-web \
+        --auth-token $TOKEN \
+        --insecure \
+
+      echo "ArgoCD Application 'todo-app-db' created."
+    EOT
+  }
+}
+
+resource "null_resource" "argocd_back_app" {
+  depends_on = [null_resource.argocd_db_app]
+
+  provisioner "local-exec" {
+    command = <<EOT
+      set -e
+      ARGOCD_HOST=$(kubectl -n argocd get svc argocd-server -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+      TOKEN=$(cat argocd-token.txt)
+
+      argocd app create todo-app-backend \
+        --repo https://github.com/mohamedbstar413/todo-app-pipeline.git \
+        --path kubernetes-resources/backend \
+        --dest-server https://kubernetes.default.svc \
+        --dest-namespace back-ns \
+        --sync-policy automated \
+        --self-heal \
+        --grpc-web \
+        --auth-token $TOKEN \
+        --insecure \
+
+      echo "ArgoCD Application 'todo-app-back' created."
+    EOT
+  }
+}
+
+resource "null_resource" "argocd_front_app" {
+  depends_on = [null_resource.argocd_back_app]
+
+  provisioner "local-exec" {
+    command = <<EOT
+      set -e
+      ARGOCD_HOST=$(kubectl -n argocd get svc argocd-server -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+      TOKEN=$(cat argocd-token.txt)
+
+      argocd app create todo-app-front \
+        --repo https://github.com/mohamedbstar413/todo-app-pipeline.git \
+        --path kubernetes-resources/frontend \
+        --dest-server https://kubernetes.default.svc \
+        --dest-namespace front-ns \
+        --sync-policy automated \
+        --self-heal \
+        --grpc-web \
+        --auth-token $TOKEN \
+        --insecure \
+
+      echo "ArgoCD Application 'todo-app-front' created."
+    EOT
+  }
+}
+
+resource "null_resource" "argocd_jenkins_app" {
+  depends_on = [null_resource.argocd_login]
+
+  provisioner "local-exec" {
+    command = <<EOT
+      set -e
+      ARGOCD_HOST=$(kubectl -n argocd get svc argocd-server -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+      TOKEN=$(cat argocd-token.txt)
+
+      argocd app create todo-app-jenkins \
+        --repo https://github.com/mohamedbstar413/todo-app-pipeline.git \
+        --path kubernetes-resources/jenkins-manifests \
+        --dest-server https://kubernetes.default.svc \
+        --dest-namespace jenkins \
+        --sync-policy automated \
+        --self-heal \
+        --grpc-web \
+        --auth-token $TOKEN \
+        --insecure \
+
+      echo "ArgoCD Application 'todo-app-jenkins' created."
+    EOT
+  }
+}
+
+#external dns (for automatic dns management)
 resource "helm_release" "external_dns" {
   name       = "external-dns"
   repository = "https://kubernetes-sigs.github.io/external-dns/"

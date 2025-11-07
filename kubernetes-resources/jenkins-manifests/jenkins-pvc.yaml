@@ -3,6 +3,8 @@ kind: PersistentVolumeClaim
 metadata:
   name: jenkins-pvc
   namespace: jenkins
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   accessModes:
     - ReadWriteOnce

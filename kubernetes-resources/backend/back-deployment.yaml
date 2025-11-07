@@ -4,6 +4,8 @@ kind: Deployment
 metadata:
   name: backend-deployment
   namespace: back-ns
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
 spec:
   replicas: 3
   selector:

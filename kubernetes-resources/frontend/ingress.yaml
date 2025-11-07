@@ -10,6 +10,7 @@ metadata:
     nginx.ingress.kubernetes.io/use-forwarded-headers: "true"
     service.beta.kubernetes.io/aws-load-balancer-internal: "false"
     alb.ingress.kubernetes.io/scheme: "internet-facing"    
+    argocd.argoproj.io/sync-wave: "2"
 spec:
   rules:
     - http:

@@ -4,6 +4,8 @@ kind: Deployment
 metadata:
   name: front-deploy
   namespace: front-ns
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
 spec:
   replicas: 3
   selector:

@@ -4,6 +4,8 @@ kind: ConfigMap
 metadata:
   name: back-config-map
   namespace: back-ns
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
 data:
   MONGO_CONN_STR: "mongodb://mongodb-service.db-ns.svc.cluster.local:27017?authenticationDatabase=admin"
   USE_DB_AUTH: "true"

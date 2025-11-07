@@ -4,6 +4,8 @@ kind: Service
 metadata:
   name: back-service
   namespace: back-ns
+  annotations:
+    argocd.argoproj.io/sync-wave: "3"
 spec:
   type: ClusterIP
   selector:

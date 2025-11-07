@@ -3,6 +3,8 @@ kind: ResourceQuota
 metadata:
   name: back-ns-rq
   namespace: back-ns
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   hard:
     cpu: "10"
