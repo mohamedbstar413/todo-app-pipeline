@@ -192,8 +192,6 @@ This project implements a **production-ready, cloud-native todo application** th
 #### 📈 **Auto-Scaling Everything**
 - Horizontal Pod Autoscaler (HPA)
 - Cluster Autoscaler for nodes
-- Custom metrics support
-- Cost-optimized scaling policies
 
 </td>
 </tr>
@@ -213,7 +211,6 @@ This project implements a **production-ready, cloud-native todo application** th
 - Prometheus metrics collection
 - Grafana dashboards
 - Application & infrastructure monitoring
-- Custom alerting rules
 
 </td>
 </tr>
@@ -231,7 +228,6 @@ This project implements a **production-ready, cloud-native todo application** th
 
 #### 💰 **Cost-Optimized**
 - Efficient resource allocation
-- Spot instance support
 - Auto-scaling based on demand
 - Right-sized infrastructure
 
