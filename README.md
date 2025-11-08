@@ -430,6 +430,7 @@ Network Policies in Effect:
 │                                                                       │
 │ All other traffic: DENIED by default                                │
 └─────────────────────────────────────────────────────────────────────┘
+```
 
 ### What Gets Deployed?
 
@@ -535,6 +536,3 @@ Network Policies in Effect:
   - Grafana
   - Node Exporter
   - kube-state-metrics
-
-
----
