@@ -250,8 +250,7 @@ This project implements a **production-ready, cloud-native todo application** th
 
 ### 🔄 CI/CD Features
 
-<details>
-<summary><b>📦 Continuous Integration (Jenkins)</b></summary>
+ #### 📦 Continuous Integration (Jenkins)
 
 ```yaml
 Pipeline Stages:
@@ -263,10 +262,8 @@ Pipeline Stages:
   6. Send Email Notification
 ```
 
-</details>
 
-<details>
-<summary><b>🚀 Continuous Deployment (ArgoCD)</b></summary>
+ #### 🚀 Continuous Deployment (ArgoCD)
 
 ```yaml
 GitOps Features:
@@ -286,7 +283,7 @@ Applications Managed:
   4. todo-app-jenkins → PV and PVC for Jenkins
 ```
 
-</details>
+
 
 ### 🔒 Security Features
 
@@ -311,8 +308,7 @@ graph TD
     E --> E3[Admission Controllers]
 ```
 
-<details>
-<summary><b>🔐 Security Implementation Details</b></summary>
+### 🔐 Security Implementation Details
 
 #### Network Security
 - ✅ **Network Policies**: Namespace isolation with explicit allow rules
@@ -337,7 +333,7 @@ graph TD
 - ✅ **Resource Limits**: DoS prevention
 - ✅ **Pod Security Standards**: Restricted policies
 
-</details>
+
 
 ---
 
