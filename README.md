@@ -259,8 +259,10 @@ This project implements a **production-ready, cloud-native todo application** th
 Pipeline Stages:
   1. Checkout → Clone repository
   2. Docker Build → Create container images
-  3. Push → Publish to registry
-  4. Deploy → Trigger ArgoCD sync
+  3. Do Smoke Tests
+  4. Push → Publish to registry
+  5. Deploy → Trigger ArgoCD sync
+  6. Send Email Notification
 ```
 
 </details>
