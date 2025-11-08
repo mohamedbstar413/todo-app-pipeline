@@ -1,112 +1,3 @@
-### What Gets Deployed?
-
-  <br>
-
-  #### AWS Resources (54 resources)
-
-  **Network (8 resources)**
-  - 1 VPC (10.0.0.0/16)
-  - 2 Public Subnets (Multi-AZ)
-  - 1 Internet Gateway
-  - 1 Route Table
-  - 2 Route Table Associations
-  - 1 Network Load Balancer
-
-  **Compute (12 resources)**
-  - 1 EKS Cluster
-  - 1 EKS Node Group
-  - 1 Launch Template
-  - 2-3 EC2 Instances (c7i-flex.large)
-  - 1 Auto Scaling Group
-  - 1 OIDC Provider
-
-  **Storage (3 resources)**
-  - 1 S3 Bucket (nginx config)
-  - 3+ EBS Volumes (10Gi each, gp3)
-  - Storage Class (ebs-sc)
-
-  **Security (15 resources)**
-  - 7 IAM Roles
-  - 7 IAM Policies
-  - 7 IAM Role Policy Attachments
-  - 1 AWS Secrets Manager Secret
-  - 1 KMS Key
-
-  **Networking (3 resources)**
-  - Multiple Security Groups
-  - Route53 Records (if using External DNS)
-  - VPC Endpoints (optional)
-
-  #### Kubernetes Resources (80+ resources)
-
-  **Namespaces (6)**
-  - front-ns (Frontend)
-  - back-ns (Backend)
-  - db-ns (Database)
-  - jenkins (CI)
-  - argocd (CD)
-  - monitoring (Observability)
-
-  **Workloads (15+ pods typically)**
-  - Frontend: 3 pods
-  - Backend: 3-10 pods (HPA)
-  - Database: 1 pod (StatefulSet)
-  - Jenkins: 1 pod
-  - ArgoCD: 3 pods
-  - Prometheus: 2 pods
-  - Grafana: 1 pod
-  - System pods: 10-15 pods
-
-  **Services (12)**
-  - front-service (ClusterIP)
-  - back-service (ClusterIP)
-  - mongodb-service (Headless)
-  - jenkins (ClusterIP)
-  - argocd-server (LoadBalancer)
-  - ingress-nginx-controller (LoadBalancer)
-  - prometheus-server (ClusterIP)
-  - grafana (ClusterIP)
-  - And more...
-
-  **Storage (4)**
-  - jenkins-pv/pvc (10Gi)
-  - mongodb-pvc (10Gi per replica)
-  - prometheus-pvc (if enabled)
-
-  **Config & Secrets (10)**
-  - back-config-map
-  - db-secret
-  - back-secret
-  - jenkins-config
-  - argocd-cm
-  - prometheus-config
-  - And more...
-
-  **RBAC (20+ resources)**
-  - Service Accounts
-  - Roles
-  - ClusterRoles
-  - RoleBindings
-  - ClusterRoleBindings
-
-  **CRDs & Operators (5 Helm releases)**
-  - NGINX Ingress Controller
-  - EBS CSI Driver
-  - Metrics Server
-  - Cluster Autoscaler
-  - Secrets Store CSI Driver
-
-  **Monitoring Stack (30+ resources)**
-  - Prometheus Operator
-  - ServiceMonitors
-  - PodMonitors
-  - AlertManager
-  - Grafana
-  - Node Exporter
-  - kube-state-metrics
-
-
----
 
 ### Deployment Timeline
 
@@ -539,3 +430,111 @@ Network Policies in Effect:
 │                                                                       │
 │ All other traffic: DENIED by default                                │
 └─────────────────────────────────────────────────────────────────────┘
+
+### What Gets Deployed?
+
+  #### AWS Resources (54 resources)
+
+  **Network (8 resources)**
+  - 1 VPC (10.0.0.0/16)
+  - 2 Public Subnets (Multi-AZ)
+  - 1 Internet Gateway
+  - 1 Route Table
+  - 2 Route Table Associations
+  - 1 Network Load Balancer
+
+  **Compute (12 resources)**
+  - 1 EKS Cluster
+  - 1 EKS Node Group
+  - 1 Launch Template
+  - 2-3 EC2 Instances (c7i-flex.large)
+  - 1 Auto Scaling Group
+  - 1 OIDC Provider
+
+  **Storage (3 resources)**
+  - 1 S3 Bucket (nginx config)
+  - 3+ EBS Volumes (10Gi each, gp3)
+  - Storage Class (ebs-sc)
+
+  **Security (15 resources)**
+  - 7 IAM Roles
+  - 7 IAM Policies
+  - 7 IAM Role Policy Attachments
+  - 1 AWS Secrets Manager Secret
+  - 1 KMS Key
+
+  **Networking (3 resources)**
+  - Multiple Security Groups
+  - Route53 Records (if using External DNS)
+  - VPC Endpoints (optional)
+
+  #### Kubernetes Resources (80+ resources)
+
+  **Namespaces (6)**
+  - front-ns (Frontend)
+  - back-ns (Backend)
+  - db-ns (Database)
+  - jenkins (CI)
+  - argocd (CD)
+  - monitoring (Observability)
+
+  **Workloads (15+ pods typically)**
+  - Frontend: 3 pods
+  - Backend: 3-10 pods (HPA)
+  - Database: 1 pod (StatefulSet)
+  - Jenkins: 1 pod
+  - ArgoCD: 3 pods
+  - Prometheus: 2 pods
+  - Grafana: 1 pod
+  - System pods: 10-15 pods
+
+  **Services (12)**
+  - front-service (ClusterIP)
+  - back-service (ClusterIP)
+  - mongodb-service (Headless)
+  - jenkins (ClusterIP)
+  - argocd-server (LoadBalancer)
+  - ingress-nginx-controller (LoadBalancer)
+  - prometheus-server (ClusterIP)
+  - grafana (ClusterIP)
+  - And more...
+
+  **Storage (4)**
+  - jenkins-pv/pvc (10Gi)
+  - mongodb-pvc (10Gi per replica)
+  - prometheus-pvc (if enabled)
+
+  **Config & Secrets (10)**
+  - back-config-map
+  - db-secret
+  - back-secret
+  - jenkins-config
+  - argocd-cm
+  - prometheus-config
+  - And more...
+
+  **RBAC (20+ resources)**
+  - Service Accounts
+  - Roles
+  - ClusterRoles
+  - RoleBindings
+  - ClusterRoleBindings
+
+  **CRDs & Operators (5 Helm releases)**
+  - NGINX Ingress Controller
+  - EBS CSI Driver
+  - Metrics Server
+  - Cluster Autoscaler
+  - Secrets Store CSI Driver
+
+  **Monitoring Stack (30+ resources)**
+  - Prometheus Operator
+  - ServiceMonitors
+  - PodMonitors
+  - AlertManager
+  - Grafana
+  - Node Exporter
+  - kube-state-metrics
+
+
+---
