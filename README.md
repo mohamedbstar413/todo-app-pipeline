@@ -1,8 +1,5 @@
 ### What Gets Deployed?
 
-<details>
-  <h3><b>📦 Click to see complete deployment inventory</b></h3>
-
   <br>
 
   #### AWS Resources (54 resources)
@@ -108,7 +105,6 @@
   - Node Exporter
   - kube-state-metrics
 
-</details>
 
 ---
 
