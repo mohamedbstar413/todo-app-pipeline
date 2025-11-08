@@ -1,0 +1,8 @@
+#image for the container that will trigger argocd sync from inside the jenkins pipeline
+#the image name will be argocd-syncer
+FROM jenkins/agent:alpine
+RUN apk add --no-cache curl
+RUN curl -sSL -o /usr/local/bin/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
+RUN chmod +x /usr/local/bin/argocd
+
+ENTRYPOINT ["/bin/sh","-c" ,"sleep 100"]

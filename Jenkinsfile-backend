@@ -1,59 +1,168 @@
 pipeline {
   agent {
     kubernetes {
-    yaml """
-        apiVersion: v1
-        kind: Pod
-        spec:
-            containers:
-                -   name: docker-dind
-                    image: docker:24.0.7-dind
-                    securityContext:
-                        privileged: true
-                    args: ["--registry-mirror=https://mirror.gcr.io"]
-                -   name: docker
-                    image: docker:24.0.7-cli
-                    env:
-                        -   name: DOCKER_HOST
-                            value: tcp://localhost:2375
-                    command: ['cat']
-                    tty: true
-                -   name: git
-                    image: alpine/git
-                    command: ['cat']
-                    tty: true
-    """
+      yaml '''
+                apiVersion: v1
+                kind: Pod
+                metadata:
+                    name: jenkins-agent-pod
+                    labels:
+                        app: jenkins-agent
+                spec:
+                    serviceAccountName: jenkins
+                    containers:
+                        -   name: git
+                            image: alpine/git:latest
+                            command:
+                                - sleep
+                            args:
+                                - 99d
+                            tty: true
+
+                        -   name: helm
+                            image: dtzar/helm-kubectl:latest
+                            command:
+                                - sleep
+                            args:
+                                - 99d
+                            tty: true
+                        -   name: kaniko
+                            image: gcr.io/kaniko-project/executor:debug
+                            command:
+                                - /busybox/sleep
+                            args:
+                                - 99999
+
+                            tty: true
+                        -   name: tester
+                            image: ubuntu
+                            command:
+                                - sleep
+                            args:
+                                - 99d
+                            tty: true
+                        -   name: mailer
+                            image: alpine:latest
+                            command:
+                                - sleep
+                            args:
+                                - 99d
+                            tty: true
+                        -   name: argocd-syncer
+                            image: bstar999/argocd-syncer
+                            command:
+                              - sleep
+                            args:
+                              - 99d
+                            tty: true 
+            '''
     }
   }
 
   environment {
-    DOCKER_REPO = "bstar999"
+        GIT_REPO = 'https://github.com/mohamedbstar413/todo-app-pipeline.git'
+        GIT_BRANCH = 'main'
+        DOCKER_IMAGE = 'bstar999/back-image-mini'
+        DOCKER_TAG = "${env.BUILD_NUMBER}"
+        SMOKE_TEST_URL = 'https://back-service.back-ns.svc.cluster.local:8080/ok'
+        ARGOCD_SERVER = 'argocd-server.argocd.svc.cluster.local'
+        ARGOCD_APP = 'todo-app-frontend'
   }
 
   stages {
     stage('pull code') {
       steps {
         container('git') {
-          sh 'git clone "https://github.com/mohamedbstar413/todo-app-pipeline.git"'
+          sh "git clone -b $GIT_BRANCH $GIT_REPO"
         }
       }
     }
 
-    stage('build image and push to Docker Hub') {
+    stage('Build docker image and push to docker hub') {
       steps {
-        dir('app-code/backend') {
-          container('docker') {
-            withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
-              sh '''
-                docker login -u $USER -p $PASS
-                docker build -t back-image-mini .
-                docker tag back-image-mini ${DOCKER_REPO}/back-image-mini
-                docker push ${DOCKER_REPO}/back-image-mini
-              '''
-            }
+        withCredentials([usernamePassword(
+                            credentialsId: 'dockerhub',
+                            usernameVariable: 'DOCKER_USER',
+                            passwordVariable: 'DOCKER_PASS'
+                        )]) {
+          container('kaniko') {
+            sh """
+                        cat > /kaniko/.docker/config.json <<EOF
+                        {
+                            "auths": {
+                                        "https://index.docker.io/v1/": {
+                                            "auth": "\$(echo -n $DOCKER_USER:$DOCKER_PASS | base64 | tr '\n')"
+                                        }
+                            }
+                        }
+                        EOF
+                        /kaniko/executor \
+                            --context `pwd` \
+                            --dockerfile Dockerfile \
+                            --destination $DOCKER_IMAGE:$DOCKER_TAG \
+                            --cache=true \
+                            --verbosity=info \
+                            --snapshot-mode=redo
+                    """
           }
-        }
+                        }
       }
     }
+
+    stage('Smkoe test') {
+        steps {
+            container('tester') {
+              sh """
+                  apt update -y
+                  apt install -y curl
+                  curl -k -Iv $SMOKE_TEST_URL
+              """
+            }
+        }
+    }
+
+    stage("sync argocd"){
+      steps{
+        withCredentials([string(credentialsId: 'argocd-auth-token', variable: 'ARGOCD_AUTH_TOKEN')]) {
+            container('argocd-syncer'){
+                sh '''
+                    argocd login $ARGOCD_SERVER --username admin --auth-token $ARGOCD_AUTH_TOKEN --insecure
+                    argocd app sync $ARGOCD_APP --prune
+                    argocd app wait $ARGOCD_APP --health
+                '''
+            }
+        }
+        
+      }
+    }
+    stage('Send Email') {
+            steps {
+                container('mailer') {
+                    withCredentials([usernamePassword(credentialsId: 'gmail', usernameVariable: 'GMAIL_USER', passwordVariable: 'GMAIL_PASS')]) {
+                        sh """
+                    apk add --no-cache curl ca-certificates
+
+                    FROM="mabdelsattar413@gmail.com"
+                    TO="mabdelsattar413@gmail.com"
+                    SUBJECT="Build \$BUILD_NUMBER completed and ARGOCD is trigerred"
+                    BODY="Job: \$JOB_NAME\\nBuild URL: \$BUILD_URL\\nStatus: \$currentBuild.currentResult"
+
+                    echo "Sending email..."
+                    echo -e "From: \$FROM\\nTo: \$TO\\nSubject: \$SUBJECT\\n\\n\$BODY" > /tmp/email.txt
+
+                    curl --url "smtps://smtp.gmail.com:465" \
+                         --ssl-reqd \
+                         --mail-from "\$FROM" \
+                         --mail-rcpt "\$TO" \
+                         --upload-file /tmp/email.txt \
+                         --user "\$GMAIL_USER:\$GMAIL_PASS" \
+                         --verbose
+                """
+                    }
+                }
+            }
+        }
+      
+    
   }
 }
