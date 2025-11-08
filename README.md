@@ -1,7 +1,7 @@
 ### What Gets Deployed?
 
 <details>
-  <summary><b>📦 Click to see complete deployment inventory</b></summary>
+  <h3><b>📦 Click to see complete deployment inventory</b></h3>
 
   <br>
 
