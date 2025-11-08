@@ -170,6 +170,8 @@
 
 ## 🎯 Overview
 
+![alt text](image.png)
+
 > **Transform your DevOps workflow with enterprise-grade infrastructure**
 
 This project implements a **production-ready, cloud-native todo application** that demonstrates modern DevOps best practices and cloud-native architecture patterns. Built entirely with Infrastructure as Code (IaC), this solution provides a robust foundation for deploying scalable applications on AWS.
