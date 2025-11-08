@@ -99,7 +99,7 @@ pipeline {
                         /kaniko/executor \
                             --context `pwd` \
                             --dockerfile Dockerfile \
-                            --destination $DOCKER_IMAGE:$DOCKER_TAG \
+                            --destination $DOCKER_IMAGE \
                             --cache=true \
                             --verbosity=info \
                             --snapshot-mode=redo
