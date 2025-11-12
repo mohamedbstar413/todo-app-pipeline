@@ -35,7 +35,6 @@ resource "kubernetes_cluster_role_binding" "jenkins_sa_role_binding" {
     kind      = "ServiceAccount"
     name      = kubernetes_service_account.jenkins.metadata[0].name
     namespace = kubernetes_namespace.jenkins.metadata[0].name
-    # Remove api_group for ServiceAccount - it should be empty
   }
 }
 
@@ -48,7 +47,7 @@ resource "kubernetes_service_account" "jenkins_pvc_fixer" {
     }
  }
 
-# Create a role that allows privileged containers (if needed)
+# Create a role that allows privileged containers
 resource "kubernetes_role" "jenkins_pvc_fixer" {
     metadata {
       name      = "jenkins-pvc-fixer"

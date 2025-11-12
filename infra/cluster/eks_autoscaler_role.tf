@@ -1,4 +1,4 @@
-# IAM Policy for my EBS CSI Driver
+# IAM Policy for my kube autoscaler
 resource "aws_iam_policy" "auto_scaler_policy" {
   name        = "AmazonEKS_AutoScaling_Policy"
   description = "Policy for cluster auto scaler"
